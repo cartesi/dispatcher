@@ -11,5 +11,7 @@ digraph {
 
   A [label="Dapp Callback"]
   C [label="Configuration file"]
-  D -> {I T A C}
+  F [label="File Manager"]
+  D -> {I T A C F}
+  C -> F
 }
