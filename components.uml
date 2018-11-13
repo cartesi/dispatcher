@@ -1,0 +1,54 @@
+@startuml
+
+package "Blockchain" {
+  [dApp Contract] as dapp
+  [Compute] as C
+  [Verification Game] as VG
+  [(Partition, MM, Step)] as Aux
+  dapp -> C : request
+  C -> VG : challenge
+  VG -> Aux
+}
+
+component [Etherem Node] as geth
+
+dapp <- geth
+C <- geth
+
+package "Interface" {
+  [Transaction Manager] as tx
+  [State Manager] as S
+  [Dispatcher] as D
+  tx <-down- D
+  S <-down- D
+}
+
+geth <- tx
+geth <- S
+
+component [Dapp Callback] as callback
+
+
+D -down-> callback
+
+package "Emulator" {
+  [Emulator Manager] as EM
+  [Emu1] as E1
+  [Emu2] as E2
+  [Emu3] as E3
+  EM -down-> E1
+  EM -down-> E2
+  EM -down-> E3
+}
+
+component [Config File] as config
+D -right-> config
+
+
+component [File Manager] as FM
+
+EM -up-> FM
+callback -right-> FM
+callback -down-> EM
+
+@enduml
