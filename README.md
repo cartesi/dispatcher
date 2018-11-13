@@ -33,9 +33,16 @@ This module is called by the Dispatcher, with all the state information that it 
 
 This is a simple file holding data that is specific of the user's installation of the dApp, like the user's address.
 
+### File manager
+
+Cartesi offers the possibility to deal with large amounts of data on the blockchain.
+This will only be possible because we can store large files off-chain, while refering to them on-chain through their Merkle-tree hashes.
+The File Manager service will keep files on behalf of the dApp, reducing the state of the DApp Callback.
+This manager can provide several aditional services in the future, such as backups, p2p sharing, making data available and collecting signatures, etc.
+
 ### Ethereum Node
 
-This is self explanatory. Crazy complex, but self explanatory.
+This is self explanatory. Async, complex, but self explanatory.
 
 ## The Dispatcher Loop
 
