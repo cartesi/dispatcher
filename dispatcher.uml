@@ -1,11 +1,16 @@
 @startuml
-participant "Dispatcher" as D
-participant "Conf. File" as CF
-participant "State Manager" as SM
-participant "Tx Manager" as TM
-participant "DApp Callback" as DC
+box "Interface" #LightBlue
+  participant "Dispatcher" as D
+  participant "State Manager" as SM
+  participant "Tx Manager" as TM
+end box
+box "DApp" #LightGreen
+  participant "Conf. File" as CF
+  participant "DApp Callback" as DC
+end box
+box "File Manager and Emulator Manager" #LightYellow
 participant "File/Emulator" as others
-D -> CF : Get contracts and addresses
+D -> CF : Read contracts and addresses
 CF -> D : List (contract, address)
 D -> SM : Get relevant instances
 note right
@@ -15,7 +20,6 @@ note right
   current and ancestor nonce
 end note
 SM -> D : List (contract, instace)
-
 D -> TM : Check pending instances
 note right
   For each instance, verify
@@ -24,14 +28,14 @@ note right
 end note
 TM -> D : List (pending)
 D -> DC : Get reaction to instance
-note right
+activate DC
+note over SM
   For each instance that requires
   a response, get the appropriate
   transactions
 end note
-activate DC
-DC -> others : Downloads and Emulations
-others -> DC : Results from emulations
+DC -> others : Files/Emulations
+others -> DC : Emulations hashes
 DC -> D : Transaction to be submitted
 deactivate DC
 D -> TM : Submit transaction
