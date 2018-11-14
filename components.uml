@@ -1,19 +1,20 @@
 @startuml
+skinparam dpi 300
 
 package "Blockchain" {
-  [dApp Contract] as dapp
+  [dApp Contract] as dappContract
   [Compute] as C
   [Verification Game] as VG
   [(Partition, MM, Step)] as Aux
-  dapp -> C : request
+  dappContract -> C : request
   C -> VG : challenge
   VG -> Aux
 }
 
 component [Etherem Node] as geth
 
-dapp <- geth
-C <- geth
+dappContract <- geth : conformant
+C <- geth : conformant
 
 package "Interface" {
   [Transaction Manager] as tx
@@ -26,8 +27,12 @@ package "Interface" {
 geth <- tx
 geth <- S
 
-component [Dapp Callback] as callback
+package "DApp" {
+  component [Dapp Callback] as callback
+  component [Config File] as config
+}
 
+D -right-> config
 
 D -down-> callback
 
@@ -41,11 +46,9 @@ package "Emulator" {
   EM -down-> E3
 }
 
-component [Config File] as config
-D -right-> config
-
-
-component [File Manager] as FM
+database "Files" {
+  component [File Manager] as FM
+}
 
 EM -up-> FM
 callback -right-> FM
