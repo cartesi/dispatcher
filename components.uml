@@ -16,6 +16,8 @@ component [Etherem Node] as geth
 dappContract <- geth : conformant
 C <- geth : conformant
 
+package "Docker container for DApp" {
+
 package "Interface" {
   [Transaction Manager] as tx
   [State Manager] as S
@@ -53,5 +55,7 @@ database "Files" {
 EM -up-> FM
 callback -right-> FM
 callback -down-> EM
+
+}
 
 @enduml
