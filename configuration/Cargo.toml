@@ -1,0 +1,9 @@
+[package]
+description = "Cartesi Configuration"
+homepage = "https://cartesi.io"
+name = "configuration"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+ethabi = { git = "https://github.com/paritytech/ethabi", branch = "master" }
