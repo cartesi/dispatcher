@@ -1,0 +1,10 @@
+[package]
+description = "Cartesi Dispatcher"
+homepage = "https://cartesi.io"
+name = "dispatcher"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+utils = { path = "../utils" }
