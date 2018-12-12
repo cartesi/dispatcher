@@ -87,6 +87,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "configuration"
+version = "0.1.0"
+
+[[package]]
 name = "core-foundation"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,6 +146,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "dispatcher"
 version = "0.1.0"
 dependencies = [
+ "configuration 0.1.0",
  "utils 0.1.0",
  "web3 0.5.1 (git+https://github.com/tomusdrw/rust-web3)",
 ]
