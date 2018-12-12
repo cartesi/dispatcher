@@ -7,4 +7,5 @@ authors = ["Cartesi Team"]
 
 [dependencies]
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+configuration = { path = "../configuration" }
 utils = { path = "../utils" }

@@ -6,4 +6,5 @@ version = "0.1.0"
 authors = ["Cartesi Team"]
 
 [dependencies]
-ethabi = { git = "https://github.com/paritytech/ethabi", branch = "master" }
+#serde = "0.1.0"
+#ethabi = { git = "https://github.com/paritytech/ethabi", branch = "master" }
