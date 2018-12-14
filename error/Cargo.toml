@@ -1,0 +1,11 @@
+[package]
+description = "Errors"
+homepage = "https://cartesi.io"
+name = "error"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+serde_yaml = "0.8"
+error-chain = "0.12.0"
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }
