@@ -6,6 +6,9 @@ version = "0.1.0"
 authors = ["Cartesi Team"]
 
 [dependencies]
+error = { path = "../error" }
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 configuration = { path = "../configuration" }
 utils = { path = "../utils" }
+log = "0.4"
+env_logger = "0.6.0"

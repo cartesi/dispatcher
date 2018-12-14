@@ -1,28 +1,34 @@
-extern crate configuration;
-extern crate utils;
-extern crate web3;
+// error-chain recursion
+#![recursion_limit = "1024"]
 
-use configuration::Configuration;
-use utils::EthExt;
-use web3::futures::Future;
+#[macro_use]
+extern crate log;
+extern crate dispatcher;
+extern crate env_logger;
+
+use dispatcher::Dispatcher;
 
 fn main() {
-    //let url = "http://35.231.249.221:8545"; // remote parity
-    let url = "http://127.0.0.1:8545"; // ganache
+    env_logger::init();
 
-    let config = Configuration::new("bla");
-    println!("Max delay: {}", config.get_max_delay());
+    if let Err(ref e) = Dispatcher::new("config.yaml") {
+        error!("error: {}", e);
 
-    let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
-    let web3 = web3::Web3::new(transport);
-    let accounts = web3.eth().accounts().wait().unwrap();
+        for e in e.iter().skip(1) {
+            error!("caused by: {}", e);
+        }
 
-    println!("Accounts: {:?}", accounts);
+        // The backtrace is not always generated. Try to run this example
+        // with `RUST_BACKTRACE=1`.
+        if let Some(backtrace) = e.backtrace() {
+            error!("backtrace: {:?}", backtrace);
+        }
 
-    let block_number = web3.eth().block_number().wait().unwrap().low_u64();
-    println!("Block number: {:?}", block_number);
+        ::std::process::exit(1);
+    }
 
-    let a = web3.eth().get_delay().wait().unwrap();
-
-    println!("Delay: {:?}", a);
+    // let accounts = web3.eth().accounts().wait()?;
+    // println!("Account: {:?}", accounts[0]);
+    // let block_number = web3.eth().block_number().wait()?.low_u64();
+    // println!("Block number: {:?}", block_number);
 }
