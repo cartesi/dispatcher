@@ -1,7 +1,7 @@
 # remote parity
-url: "http://35.231.249.221:8545"
+#url: "http://35.231.249.221:8545"
 # ganache
-# url: "http://127.0.0.1:8545"
+url: "http://127.0.0.1:8545"
 #testing: true
 max_delay: 500
 warn_delay: 30
