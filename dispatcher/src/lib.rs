@@ -6,68 +6,45 @@ extern crate web3;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate transaction;
 
 use configuration::Configuration;
 pub use error::*;
-use utils::EthExt;
+use transaction::TransactionManager;
+use utils::EthWeb3;
 use web3::futures::Future;
 
 pub struct Dispatcher {
-    configuration: Configuration,
+    config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
 }
 
 impl Dispatcher {
-    pub fn new(path: &str) -> Result<Dispatcher> {
+    pub fn new() -> Result<Dispatcher> {
         info!("Loading configuration file");
-        let config = Configuration::new(path)?;
+        let config = Configuration::new()?;
 
-        info!("Trying to connect at {}", &config.url[..]);
+        info!("Trying to connect to Eth node at {}", &config.url[..]);
         let (_eloop, transport) = web3::transports::Http::new(&config.url[..])
             .chain_err(|| {
                 format!("could not connect to Eth node at url: {}", &config.url)
             })?;
+        info!("Connected to Eth node");
         let web3 = web3::Web3::new(transport);
 
-        info!("Testing Ethereum node's responsiveness");
-        web3.web3().client_version().wait().chain_err(|| {
-            format!("no Ethereum node responding at url: {}", &config.url)
-        })?;
-
         let ans = Dispatcher {
-            configuration: config,
+            config: config,
             web3: web3,
         };
 
-        ans.delay_exceeded()?;
+        ans.web3.test_connection(&ans.config).wait()?;
+        info!("Ethereum node responsive");
+        // transaction
+
+        let tm = TransactionManager::new(ans.config.clone());
+
+        tm.send();
 
         Ok(ans)
-    }
-
-    pub fn delay_exceeded(&self) -> Result<()> {
-        if self.configuration.testing {
-            Ok(())
-        } else {
-            info!("Testing if Ethereum's node is up to date");
-
-            let delay = self.web3.eth().get_delay().wait()?;
-
-            // intermediate delay
-            if (delay > self.configuration.warn_delay as i64)
-                && (delay <= self.configuration.max_delay as i64)
-            {
-                warn!("ethereum node is delayed, but not above max_delay");
-                return Ok(());
-            }
-
-            // exceeded max_delay
-            if delay > self.configuration.max_delay as i64 {
-                return Err(Error::from(ErrorKind::ChainNotInSync(
-                    delay,
-                    self.configuration.max_delay,
-                )));
-            }
-            Ok(())
-        }
     }
 }

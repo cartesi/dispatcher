@@ -1,0 +1,22 @@
+[package]
+description = "Cartesi Transaction Manager"
+homepage = "https://cartesi.io"
+name = "transaction"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+log = "0.4"
+env_logger = "0.6.0"
+structopt = "0.2"
+envy = "0.3"
+error = { path = "../error" }
+configuration = { path = "../configuration" }
+serde = "1.0.0"
+serde_derive = "1.0.0"
+serde_yaml = "0.8"
+ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", path = "ethcore/transaction", branch = "master" }
+ethjson = { git = "https://github.com/paritytech/parity-ethereum", path = "json", branch = "master" }
+ethkey = { git = "https://github.com/paritytech/parity-ethereum", path = "ethkey", branch = "master" }
+ethereum-types = "0.4"
+keccak-hash = "0.1"
