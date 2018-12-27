@@ -10,6 +10,7 @@ extern crate log;
 
 //extern crate ethabi;
 
+const DEFAULT_CONFIG_PATH: &str = "config.yaml";
 const DEFAULT_MAX_DELAY: u64 = 500;
 const DEFAULT_WARN_DELAY: u64 = 100;
 
@@ -20,7 +21,7 @@ use std::io::Read;
 use structopt::StructOpt;
 
 /// A concern is a pair: smart contract and user
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Concern {
     contract: String,
     user: String,
@@ -30,6 +31,9 @@ pub struct Concern {
 #[derive(StructOpt, Deserialize, Debug)]
 #[structopt(name = "basic")]
 struct EnvCLIConfiguration {
+    /// Path to configuration file
+    #[structopt(short = "c", long = "config")]
+    config_path: Option<String>,
     /// Url for the Ethereum node
     #[structopt(short = "u", long = "url")]
     url: Option<String>,
@@ -61,7 +65,7 @@ struct FileConfiguration {
 }
 
 /// Configuration after parsing
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Configuration {
     pub url: String,
     pub testing: bool,
@@ -73,7 +77,7 @@ pub struct Configuration {
 impl Configuration {
     /// Creates a Configuration from a file as well as the Environment
     /// and CLI arguments
-    pub fn new(path: &str) -> Result<Configuration> {
+    pub fn new() -> Result<Configuration> {
         // try to load config from CLI arguments
         let cli_config = EnvCLIConfiguration::from_args();
         info!("CLI args: {:?}", cli_config);
@@ -83,19 +87,30 @@ impl Configuration {
         let env_config = envy::from_env::<EnvCLIConfiguration>()?;
         info!("Env args: {:?}", env_config);
 
+        // determine path to configuration file
+        let config_path = cli_config
+            .config_path
+            .as_ref()
+            .or(env_config.config_path.as_ref())
+            .unwrap_or(&DEFAULT_CONFIG_PATH.to_string())
+            .clone();
+
         // try to read config from file
-        let mut file = File::open(path).chain_err(|| {
-            format!("unable to read configuration file: {}", path)
+        let mut file = File::open(&config_path[..]).chain_err(|| {
+            format!("unable to read configuration file: {}", config_path)
         })?;
         let mut contents = String::new();
         file.read_to_string(&mut contents).chain_err(|| {
-            format!("could not read from configuration file: {}", path)
+            format!("could not read from configuration file: {}", config_path)
         })?;
         let file_config: FileConfiguration =
             serde_yaml::from_str(&contents[..])
                 .map_err(|e| error::Error::from(e))
                 .chain_err(|| {
-                    format!("could not parse configuration file: {}", path)
+                    format!(
+                        "could not parse configuration file: {}",
+                        config_path
+                    )
                 })?;
 
         // merge these three configurations
@@ -141,10 +156,10 @@ fn validate_concern(
     if contract.is_some() || user.is_some() {
         Ok(Some(Concern {
             contract: contract.ok_or(Error::from(ErrorKind::InvalidConfig(
-                String::from("All fields of cli_concern should be specified"),
+                String::from("Concern's contract should be specified"),
             )))?,
             user: user.ok_or(Error::from(ErrorKind::InvalidConfig(
-                String::from("All fields of cli_concern should be specified"),
+                String::from("Concern's user should be specified"),
             )))?,
         }))
     } else {
@@ -188,11 +203,11 @@ fn combine_config(
         .or(file_config.warn_delay)
         .unwrap_or(DEFAULT_WARN_DELAY);
 
-    // determine cli concern
+    info!("determine cli concern");
     let cli_concern =
         validate_concern(cli_config.concern_contract, cli_config.concern_user)?;
 
-    // determine env concern
+    info!("determine env concern");
     let env_concern =
         validate_concern(env_config.concern_contract, env_config.concern_user)?;
 

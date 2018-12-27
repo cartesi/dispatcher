@@ -11,7 +11,7 @@ use dispatcher::Dispatcher;
 fn main() {
     env_logger::init();
 
-    if let Err(ref e) = Dispatcher::new("config.yaml") {
+    if let Err(ref e) = Dispatcher::new() {
         error!("error: {}", e);
 
         for e in e.iter().skip(1) {
