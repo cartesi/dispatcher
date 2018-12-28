@@ -7,7 +7,6 @@ extern crate web3;
 
 pub use error::*;
 use std::time::{SystemTime, UNIX_EPOCH};
-//use web3::error::{Error, ErrorKind};
 use web3::futures::Future;
 use web3::types::H256;
 use web3::types::{Block, BlockId, BlockNumber};
