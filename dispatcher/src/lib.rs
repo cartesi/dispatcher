@@ -41,9 +41,11 @@ impl Dispatcher {
         info!("Ethereum node responsive");
         // transaction
 
-        let tm = TransactionManager::new(ans.config.clone());
+        let tm = TransactionManager::new(ans.config.clone())?;
 
-        tm.send();
+        tm.send().chain_err(|| {
+            format! {"could not send transaction"}
+        })?;
 
         Ok(ans)
     }
