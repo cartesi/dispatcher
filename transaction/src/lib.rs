@@ -30,10 +30,15 @@ use std::rc::Rc;
 use web3::futures::Future;
 use web3::types::Bytes;
 
-pub struct Instruction {
-    action: Action,
-    value: U256,
-    data: Vec<u8>,
+pub enum Strategy {
+    Deadline(std::time::Instant),
+}
+
+pub struct TransactionRequest {
+    pub concern: configuration::Concern,
+    pub value: U256,
+    pub data: Vec<u8>,
+    pub strategy: Strategy,
 }
 
 pub struct TransactionManager {
@@ -74,7 +79,10 @@ impl TransactionManager {
         })
     }
 
-    pub fn send(&self) -> Box<Future<Item = (), Error = Error>> {
+    pub fn send(
+        &self,
+        request: TransactionRequest,
+    ) -> Box<Future<Item = (), Error = Error>> {
         // async_block needs owned values, so let us clone
         let web3 = Rc::clone(&self.web3);
         let key = KeyPair::from_secret(self.secret.clone()).unwrap();
