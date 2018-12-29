@@ -10,3 +10,5 @@ env_logger = "0.6.0"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 error = { path = "../error" }
 configuration = { path = "../configuration" }
+futures-await = "0.1"
+time = "0.1"

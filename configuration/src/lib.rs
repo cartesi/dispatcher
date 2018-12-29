@@ -7,24 +7,28 @@ extern crate serde_derive;
 extern crate structopt;
 #[macro_use]
 extern crate log;
-
-//extern crate ethabi;
+extern crate ethereum_types;
+extern crate hex;
+extern crate time;
 
 const DEFAULT_CONFIG_PATH: &str = "config.yaml";
 const DEFAULT_MAX_DELAY: u64 = 500;
 const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
+use ethereum_types::Address;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 use structopt::StructOpt;
+use time::Duration;
 
 /// A concern is a pair: smart contract and user
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Concern {
-    contract: String,
-    user: String,
+    contract: Address,
+    user: Address,
 }
 
 /// Structure for parsing configurations, both Environment and CLI arguments
@@ -69,8 +73,8 @@ struct FileConfiguration {
 pub struct Configuration {
     pub url: String,
     pub testing: bool,
-    pub max_delay: u64,
-    pub warn_delay: u64,
+    pub max_delay: Duration,
+    pub warn_delay: Duration,
     pub concerns: Vec<Concern>,
 }
 
@@ -146,6 +150,27 @@ impl fmt::Display for Configuration {
     }
 }
 
+fn address_from_hex_string(string: String) -> Result<Address> {
+    if !string.starts_with("0x") {
+        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Concern's contract address should start with 0x",
+        ))));
+    }
+    let truncated = &string[2..];
+    let decoded = hex::decode(truncated)?;
+    let bytes = decoded.as_slice();
+    println!("{:?}", bytes);
+    if bytes.len() < 20 {
+        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Concern's contract address not long enough",
+        ))));
+    }
+    let mut array = [0; 20];
+    let b = &bytes[..20]; // panics if not enough data, but we checked
+    array.copy_from_slice(b);
+    Ok(Address::from(array))
+}
+
 /// check if a given concern is well formed (either having all arguments
 /// or none).
 fn validate_concern(
@@ -155,12 +180,16 @@ fn validate_concern(
     // if some option is Some, both should be
     if contract.is_some() || user.is_some() {
         Ok(Some(Concern {
-            contract: contract.ok_or(Error::from(ErrorKind::InvalidConfig(
-                String::from("Concern's contract should be specified"),
-            )))?,
-            user: user.ok_or(Error::from(ErrorKind::InvalidConfig(
-                String::from("Concern's user should be specified"),
-            )))?,
+            contract: address_from_hex_string(contract.ok_or(Error::from(
+                ErrorKind::InvalidConfig(String::from(
+                    "Concern's contract should be specified",
+                )),
+            ))?)?,
+            user: address_from_hex_string(user.ok_or(Error::from(
+                ErrorKind::InvalidConfig(String::from(
+                    "Concern's user should be specified",
+                )),
+            ))?)?,
         }))
     } else {
         Ok(None)
@@ -223,8 +252,8 @@ fn combine_config(
     Ok(Configuration {
         url: url,
         testing: testing,
-        max_delay: max_delay,
-        warn_delay: warn_delay,
+        max_delay: Duration::seconds(max_delay as i64),
+        warn_delay: Duration::seconds(warn_delay as i64),
         concerns: concerns,
     })
 }

@@ -10,3 +10,5 @@ envy = "0.3"
 serde_yaml = "0.8"
 error-chain = "0.12.0"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+time = "0.1"
+hex = "0.3.2"

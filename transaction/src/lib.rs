@@ -1,10 +1,10 @@
+#![feature(proc_macro_hygiene, generators)]
+
 extern crate configuration;
 extern crate env_logger;
 extern crate envy;
 extern crate error;
 
-#[macro_use]
-extern crate serde_derive;
 extern crate structopt;
 #[macro_use]
 extern crate log;
@@ -12,29 +12,35 @@ extern crate ethcore_transaction;
 extern crate ethereum_types;
 extern crate ethjson;
 extern crate ethkey;
+extern crate futures_await as futures;
 extern crate keccak_hash;
 extern crate rlp;
 extern crate web3;
 
 use configuration::Configuration;
 use error::*;
-use ethcore_transaction::{Action, SignedTransaction, Transaction};
+use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
-use ethkey::{KeyPair, Public, Secret};
+use ethkey::{KeyPair, Secret};
+use futures::prelude::{async_block, await};
 use keccak_hash::keccak;
 use std::collections::HashMap;
-use std::fmt;
 use std::fs::File;
-use std::io::Read;
-use structopt::StructOpt;
-use web3::futures::{Future, IntoFuture};
+use std::rc::Rc;
+use web3::futures::Future;
 use web3::types::Bytes;
+
+pub struct Instruction {
+    action: Action,
+    value: U256,
+    data: Vec<u8>,
+}
 
 pub struct TransactionManager {
     config: Configuration,
     keys: HashMap<Address, Secret>,
     secret: Secret,
-    web3: web3::Web3<web3::transports::Http>,
+    web3: Rc<web3::Web3<web3::transports::Http>>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
 }
 
@@ -57,41 +63,42 @@ impl TransactionManager {
                 format!("could not connect to Eth node at url: {}", &url[..])
             })?;
 
-        let my_web3 = web3::Web3::new(transport);
+        let web3 = Rc::new(web3::Web3::new(transport));
 
         Ok(TransactionManager {
             config: config,
             keys: hard_coded_keys,
             secret: Secret::from(KEY),
-            web3: my_web3,
+            web3: web3,
             _eloop: _eloop,
         })
     }
 
-    pub fn send(&self) -> Result<()> {
+    pub fn send(&self) -> Box<Future<Item = (), Error = Error>> {
+        // async_block needs owned values, so let us clone
+        let web3 = Rc::clone(&self.web3);
         let key = KeyPair::from_secret(self.secret.clone()).unwrap();
+        Box::new(async_block! {
+            let nonce = await!(web3.eth()
+                               .transaction_count(key.address(), None)
+            )?;
+            let signed_tx = Transaction {
+                action: Action::Call(key.address()),
+                nonce: nonce,
+                gas_price: U256::from(3_000_000),
+                gas: U256::from(50_000),
+                value: U256::from(1),
+                data: b"".to_vec(),
+            }
+            .sign(&key.secret(), Some(69));
 
-        let nonce = self
-            .web3
-            .eth()
-            .transaction_count(key.address(), None)
-            .wait()?;
-        let signed_tx = Transaction {
-            action: Action::Call(key.address()),
-            nonce: nonce,
-            gas_price: U256::from(3_000_000),
-            gas: U256::from(50_000),
-            value: U256::from(1),
-            data: b"".to_vec(),
-        }
-        .sign(&key.secret(), Some(69));
+            let raw = Bytes::from(rlp::encode(&signed_tx));
 
-        let raw = Bytes::from(rlp::encode(&signed_tx));
-
-        let a = self.web3.eth().send_raw_transaction(raw).wait()?;
-        println!("{:?}", a);
-        assert_eq!(Address::from(keccak(key.public())), signed_tx.sender());
-        assert_eq!(signed_tx.chain_id(), Some(69));
-        Ok(())
+            let a = await!(web3.eth().send_raw_transaction(raw));
+            println!("{:?}", a?);
+            assert_eq!(Address::from(keccak(key.public())), signed_tx.sender());
+            assert_eq!(signed_tx.chain_id(), Some(69));
+            Ok(())
+        })
     }
 }
