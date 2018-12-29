@@ -1,16 +1,21 @@
 extern crate configuration;
 extern crate error;
+extern crate ethereum_types;
 extern crate utils;
 extern crate web3;
 
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate ethcore_transaction;
 extern crate transaction;
 
 use configuration::Configuration;
 pub use error::*;
-use transaction::TransactionManager;
+use ethcore_transaction::Action;
+use ethereum_types::{Address, U256};
+use std::time::Instant;
+use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
 
@@ -43,10 +48,14 @@ impl Dispatcher {
         // transaction
         let tm = TransactionManager::new(ans.config.clone())?;
 
-        tm.send().wait().chain_err(|| {
-            format! {"could not send transaction"}
-        })?;
-        tm.send().wait().chain_err(|| {
+        let req = TransactionRequest {
+            concern: ans.config.concerns[0].clone(), // should change !!!!!!!!!
+            value: U256::from(1),
+            data: b"".to_vec(),
+            strategy: Strategy::Deadline(Instant::now()),
+        };
+
+        tm.send(req).wait().chain_err(|| {
             format! {"could not send transaction"}
         })?;
 
