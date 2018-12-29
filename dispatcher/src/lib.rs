@@ -39,11 +39,14 @@ impl Dispatcher {
 
         ans.web3.test_connection(&ans.config).wait()?;
         info!("Ethereum node responsive");
-        // transaction
 
+        // transaction
         let tm = TransactionManager::new(ans.config.clone())?;
 
-        tm.send().chain_err(|| {
+        tm.send().wait().chain_err(|| {
+            format! {"could not send transaction"}
+        })?;
+        tm.send().wait().chain_err(|| {
             format! {"could not send transaction"}
         })?;
 

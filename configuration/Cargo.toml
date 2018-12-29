@@ -14,3 +14,6 @@ error = { path = "../error" }
 serde = "1.0.0"
 serde_derive = "1.0.0"
 serde_yaml = "0.8"
+time = "0.1"
+ethereum-types = "0.4"
+hex = "0.3.2"

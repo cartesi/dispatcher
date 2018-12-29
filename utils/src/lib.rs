@@ -1,12 +1,19 @@
+#![feature(proc_macro, generators)]
+
 #[macro_use]
 extern crate log;
 extern crate configuration;
 extern crate env_logger;
 extern crate error;
+extern crate futures_await as futures;
+extern crate time;
 extern crate web3;
 
 pub use error::*;
+use futures::prelude::await;
+use futures::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
+use time::Duration;
 use web3::futures::Future;
 use web3::types::H256;
 use web3::types::{Block, BlockId, BlockNumber};
@@ -17,27 +24,22 @@ fn str_error(msg: &str) -> Error {
 }
 
 pub trait EthExt<T: Transport> {
-    fn get_delay(&self) -> Box<Future<Item = i64, Error = Error>>;
+    fn get_delay(self) -> Box<Future<Item = i64, Error = Error>>;
 }
 
 impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
-    fn get_delay(&self) -> Box<Future<Item = i64, Error = Error>> {
-        Box::new(self.block(BlockId::Number(BlockNumber::Latest)).then(
-            |block_result: std::result::Result<
-                Option<Block<H256>>,
-                web3::Error,
-            >| {
-                let block_time: i64 = block_result?
-                    .ok_or(str_error("Latest block not found"))?
-                    .timestamp
-                    .low_u64() as i64;
-                let current_time: i64 = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|_e| str_error("Time went backwards"))?
-                    .as_secs() as i64;
-                Ok(current_time - block_time)
-            },
-        ))
+    #[async(boxed)]
+    fn get_delay(self) -> Result<i64> {
+        let block = await!(self.block(BlockId::Number(BlockNumber::Latest)))?;
+        let block_time: i64 = block
+            .ok_or(str_error("Latest block not found"))?
+            .timestamp
+            .low_u64() as i64;
+        let current_time: i64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_e| str_error("Time went backwards"))?
+            .as_secs() as i64;
+        Ok(current_time - block_time)
     }
 }
 
@@ -81,15 +83,15 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
             let warn_delay = config.warn_delay.clone();
             let max_delay = config.max_delay.clone();
             Box::new(self.eth().get_delay().then(move |res| {
-                let delay = res?;
+                let delay = Duration::seconds(res?);
                 // intermediate delay
-                if (delay > warn_delay as i64) && (delay <= max_delay as i64) {
+                if (delay > warn_delay) && (delay <= max_delay) {
                     warn!("ethereum node is delayed, but not above max_delay");
                     return Ok(());
                 }
 
                 // exceeded max_delay
-                if delay > max_delay as i64 {
+                if delay > max_delay {
                     return Err(Error::from(ErrorKind::ChainNotInSync(
                         delay, max_delay,
                     )));
