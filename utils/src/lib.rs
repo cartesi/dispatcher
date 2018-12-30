@@ -1,4 +1,4 @@
-#![feature(proc_macro, generators)]
+#![feature(generators)]
 
 #[macro_use]
 extern crate log;
@@ -15,8 +15,7 @@ use futures::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::Duration;
 use web3::futures::Future;
-use web3::types::H256;
-use web3::types::{Block, BlockId, BlockNumber};
+use web3::types::{BlockId, BlockNumber};
 use web3::Transport;
 
 fn str_error(msg: &str) -> Error {

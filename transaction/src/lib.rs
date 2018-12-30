@@ -13,11 +13,12 @@ extern crate ethereum_types;
 extern crate ethjson;
 extern crate ethkey;
 extern crate futures_await as futures;
+extern crate hex;
 extern crate keccak_hash;
 extern crate rlp;
 extern crate web3;
 
-use configuration::Configuration;
+use configuration::{Concern, Configuration};
 use error::*;
 use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
@@ -25,7 +26,6 @@ use ethkey::{KeyPair, Secret};
 use futures::prelude::{async_block, await};
 use keccak_hash::keccak;
 use std::collections::HashMap;
-use std::fs::File;
 use std::rc::Rc;
 use web3::futures::Future;
 use web3::types::Bytes;
@@ -41,39 +41,58 @@ pub struct TransactionRequest {
     pub strategy: Strategy,
 }
 
+struct ConcernData {
+    secret: Secret,
+}
+
 pub struct TransactionManager {
     config: Configuration,
-    keys: HashMap<Address, Secret>,
-    secret: Secret,
+    concern_data: HashMap<Concern, ConcernData>,
     web3: Rc<web3::Web3<web3::transports::Http>>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
 }
 
-const ADDR: &str = "0x2ad38f50f38abc5cbcf175e1962293eecc7936de";
-
 const KEY: &str =
     "339565dd96968ad4fba67e320bc9cf07808298d3654634e1bcc3b46350964f6e";
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// we need to implement recovering keys for concerns in keystore
+fn recover_key(ref _concern: &Concern) -> Result<Secret> {
+    let key_string: String = std::env::var("CONCERN_KEY").chain_err(|| {
+        format!("for now, keys can only be provided as env variable")
+    })?;
+    //secret_from_hex_string(key_string)
+    //Ok(KeyPair::from_secret_slice(key_string.as_bytes())?.secret())
+    Ok(key_string
+        .trim_start_matches("0x")
+        .parse()
+        .chain_err(|| format!("failed to parse key"))?)
+}
 
 impl TransactionManager {
     pub fn new(config: Configuration) -> Result<TransactionManager> {
         // Change this by a properly handled ethstore
-        let mut hard_coded_keys = HashMap::new();
-
-        hard_coded_keys.insert(Address::from(ADDR), Secret::from(KEY));
+        // let mut hard_coded_keys = HashMap::new();
+        // hard_coded_keys.insert(Address::from(ADDR), Secret::from(KEY));
 
         let url = config.url.clone();
+
+        let mut concern_data = HashMap::new();
+        for concern in config.clone().concerns {
+            let key = recover_key(&concern)?;
+            concern_data.insert(concern, ConcernData { secret: key });
+        }
+
         info!("Trying to connect to Eth node at {}", &url[..]);
         let (_eloop, transport) = web3::transports::Http::new(&url[..])
             .chain_err(|| {
                 format!("could not connect to Eth node at url: {}", &url[..])
             })?;
-
         let web3 = Rc::new(web3::Web3::new(transport));
 
         Ok(TransactionManager {
             config: config,
-            keys: hard_coded_keys,
-            secret: Secret::from(KEY),
+            concern_data: concern_data,
             web3: web3,
             _eloop: _eloop,
         })
@@ -85,7 +104,10 @@ impl TransactionManager {
     ) -> Box<Future<Item = (), Error = Error>> {
         // async_block needs owned values, so let us clone
         let web3 = Rc::clone(&self.web3);
-        let key = KeyPair::from_secret(self.secret.clone()).unwrap();
+
+        //let key = KeyPair::from_secret(self.secret.clone()).unwrap();
+        let key = KeyPair::from_secret(Secret::from(KEY)).unwrap();
+
         Box::new(async_block! {
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)

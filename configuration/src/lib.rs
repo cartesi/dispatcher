@@ -20,12 +20,11 @@ use ethereum_types::Address;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
 use structopt::StructOpt;
 use time::Duration;
 
 /// A concern is a pair: smart contract and user
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Concern {
     contract: Address,
     user: Address,
@@ -76,6 +75,24 @@ pub struct Configuration {
     pub max_delay: Duration,
     pub warn_delay: Duration,
     pub concerns: Vec<Concern>,
+}
+
+impl fmt::Display for Configuration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{{ Url: {}\
+             Testing: {}\
+             Max delay: {}\
+             Warning delay: {}\
+             Number of concerns: {} }}",
+            self.url,
+            self.testing,
+            self.max_delay,
+            self.warn_delay,
+            self.concerns.len()
+        )
+    }
 }
 
 impl Configuration {
@@ -132,45 +149,6 @@ impl Configuration {
     }
 }
 
-impl fmt::Display for Configuration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{{ Url: {}\
-             Testing: {}\
-             Max delay: {}\
-             Warning delay: {}\
-             Number of concerns: {} }}",
-            self.url,
-            self.testing,
-            self.max_delay,
-            self.warn_delay,
-            self.concerns.len()
-        )
-    }
-}
-
-fn address_from_hex_string(string: String) -> Result<Address> {
-    if !string.starts_with("0x") {
-        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Concern's contract address should start with 0x",
-        ))));
-    }
-    let truncated = &string[2..];
-    let decoded = hex::decode(truncated)?;
-    let bytes = decoded.as_slice();
-    println!("{:?}", bytes);
-    if bytes.len() < 20 {
-        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Concern's contract address not long enough",
-        ))));
-    }
-    let mut array = [0; 20];
-    let b = &bytes[..20]; // panics if not enough data, but we checked
-    array.copy_from_slice(b);
-    Ok(Address::from(array))
-}
-
 /// check if a given concern is well formed (either having all arguments
 /// or none).
 fn validate_concern(
@@ -180,16 +158,20 @@ fn validate_concern(
     // if some option is Some, both should be
     if contract.is_some() || user.is_some() {
         Ok(Some(Concern {
-            contract: address_from_hex_string(contract.ok_or(Error::from(
-                ErrorKind::InvalidConfig(String::from(
+            contract: contract
+                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's contract should be specified",
-                )),
-            ))?)?,
-            user: address_from_hex_string(user.ok_or(Error::from(
-                ErrorKind::InvalidConfig(String::from(
+                ))))?
+                .trim_start_matches("0x")
+                .parse()
+                .chain_err(|| format!("failed to parse contract address"))?,
+            user: user
+                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's user should be specified",
-                )),
-            ))?)?,
+                ))))?
+                .trim_start_matches("0x")
+                .parse()
+                .chain_err(|| format!("failed to parse user address"))?,
         }))
     } else {
         Ok(None)
@@ -240,7 +222,7 @@ fn combine_config(
     let env_concern =
         validate_concern(env_config.concern_contract, env_config.concern_user)?;
 
-    // determine concerns (start from file and push CLI and Environment)
+    // determine the concerns (start from file and push CLI and Environment)
     let mut concerns = file_config.concerns;
     if let Some(c) = cli_concern {
         concerns.push(c);

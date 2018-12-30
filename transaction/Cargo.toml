@@ -23,3 +23,4 @@ keccak-hash = "0.1"
 rlp = { version = "0.3.0", features = ["ethereum"] }
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 futures-await = "0.1"
+hex = "0.3.2"
