@@ -22,7 +22,7 @@ use configuration::{Concern, Configuration};
 use error::*;
 use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
-use ethkey::{KeyPair, Secret};
+use ethkey::KeyPair;
 use futures::prelude::{async_block, await};
 use keccak_hash::keccak;
 use std::collections::HashMap;
@@ -42,7 +42,7 @@ pub struct TransactionRequest {
 }
 
 struct ConcernData {
-    secret: Secret,
+    key_pair: KeyPair,
 }
 
 pub struct TransactionManager {
@@ -52,21 +52,20 @@ pub struct TransactionManager {
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
 }
 
-const KEY: &str =
-    "339565dd96968ad4fba67e320bc9cf07808298d3654634e1bcc3b46350964f6e";
-
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // we need to implement recovering keys for concerns in keystore
-fn recover_key(ref _concern: &Concern) -> Result<Secret> {
+fn recover_key(ref _concern: &Concern) -> Result<KeyPair> {
     let key_string: String = std::env::var("CONCERN_KEY").chain_err(|| {
         format!("for now, keys can only be provided as env variable")
     })?;
     //secret_from_hex_string(key_string)
     //Ok(KeyPair::from_secret_slice(key_string.as_bytes())?.secret())
-    Ok(key_string
-        .trim_start_matches("0x")
-        .parse()
-        .chain_err(|| format!("failed to parse key"))?)
+    Ok(KeyPair::from_secret(
+        key_string
+            .trim_start_matches("0x")
+            .parse()
+            .chain_err(|| format!("failed to parse key"))?,
+    )?)
 }
 
 impl TransactionManager {
@@ -80,7 +79,7 @@ impl TransactionManager {
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
             let key = recover_key(&concern)?;
-            concern_data.insert(concern, ConcernData { secret: key });
+            concern_data.insert(concern, ConcernData { key_pair: key });
         }
 
         info!("Trying to connect to Eth node at {}", &url[..]);
@@ -105,10 +104,25 @@ impl TransactionManager {
         // async_block needs owned values, so let us clone
         let web3 = Rc::clone(&self.web3);
 
-        //let key = KeyPair::from_secret(self.secret.clone()).unwrap();
-        let key = KeyPair::from_secret(Secret::from(KEY)).unwrap();
+        let concern = request.concern.clone();
+        let optional_key = self.concern_data.get(&concern);
+
+        let key = match optional_key {
+            Some(k) => k,
+            None => {
+                return Box::new(async_block! {
+                Err(Error::from(ErrorKind::InvalidTransactionRequest(
+                    String::from("Concern requested not found"),
+                )))});
+            }
+        }
+        .key_pair
+        .clone();
 
         Box::new(async_block! {
+            //let key = KeyPair::from_secret(self.secret.clone()).unwrap();
+            //let key = KeyPair::from_secret(Secret::from(KEY)).unwrap();
+
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)
             )?;

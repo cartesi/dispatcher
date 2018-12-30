@@ -31,5 +31,9 @@ error_chain! {
                         delay,
                         max_delay)
         }
+        InvalidTransactionRequest(details: String) {
+            description("request of transaction invalid")
+                display("request of transaction invalid: {}", details)
+        }
     }
 }
