@@ -11,4 +11,5 @@ serde_yaml = "0.8"
 error-chain = "0.12.0"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 time = "0.1"
-hex = "0.3.2"
+ethkey = { git = "https://github.com/paritytech/parity-ethereum", path = "ethkey", branch = "master" }
+rustc-hex = "2.0.1"

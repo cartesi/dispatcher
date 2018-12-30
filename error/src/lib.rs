@@ -1,7 +1,8 @@
 #[macro_use]
 extern crate error_chain;
 extern crate envy;
-extern crate hex;
+extern crate ethkey;
+extern crate rustc_hex;
 extern crate serde_yaml;
 extern crate time;
 extern crate web3;
@@ -13,7 +14,8 @@ error_chain! {
         Io(::std::io::Error) #[cfg(unix)];
         Parsing(serde_yaml::Error);
         Env(envy::Error);
-        HexDecode(hex::FromHexError);
+        EthKey(ethkey::Error);
+        HexParse(rustc_hex::FromHexError);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
