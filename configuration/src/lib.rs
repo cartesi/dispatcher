@@ -26,8 +26,8 @@ use time::Duration;
 /// A concern is a pair: smart contract and user
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Concern {
-    contract: Address,
-    user: Address,
+    pub contract_address: Address,
+    pub user_address: Address,
 }
 
 /// Structure for parsing configurations, both Environment and CLI arguments
@@ -158,14 +158,14 @@ fn validate_concern(
     // if some option is Some, both should be
     if contract.is_some() || user.is_some() {
         Ok(Some(Concern {
-            contract: contract
+            contract_address: contract
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's contract should be specified",
                 ))))?
                 .trim_start_matches("0x")
                 .parse()
                 .chain_err(|| format!("failed to parse contract address"))?,
-            user: user
+            user_address: user
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's user should be specified",
                 ))))?

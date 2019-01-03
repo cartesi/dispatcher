@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate error_chain;
 extern crate envy;
+extern crate ethabi;
 extern crate ethkey;
 extern crate rustc_hex;
 extern crate serde_yaml;
@@ -16,6 +17,8 @@ error_chain! {
         Env(envy::Error);
         EthKey(ethkey::Error);
         HexParse(rustc_hex::FromHexError);
+        EthAbi(ethabi::Error);
+        JsonParse(serde_json::Error);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];

@@ -30,10 +30,12 @@ use std::rc::Rc;
 use web3::futures::Future;
 use web3::types::Bytes;
 
+#[derive(Clone)]
 pub enum Strategy {
-    Deadline(std::time::Instant),
+    Simplest,
 }
 
+#[derive(Clone)]
 pub struct TransactionRequest {
     pub concern: configuration::Concern,
     pub value: U256,
@@ -49,31 +51,34 @@ pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
     web3: Rc<web3::Web3<web3::transports::Http>>,
-    _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
+    _eloop: web3::transports::EventLoopHandle, // needs to stay in scope
 }
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// we need to implement recovering keys for concerns in keystore
-fn recover_key(ref _concern: &Concern) -> Result<KeyPair> {
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// we need to implement recovering keys in keystore
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+fn recover_key(ref concern: &Concern) -> Result<KeyPair> {
     let key_string: String = std::env::var("CONCERN_KEY").chain_err(|| {
-        format!("for now, keys can only be provided as env variable")
+        format!("for now, keys must be provided as env variable, provide one")
     })?;
-    //secret_from_hex_string(key_string)
-    //Ok(KeyPair::from_secret_slice(key_string.as_bytes())?.secret())
-    Ok(KeyPair::from_secret(
+    info!("recovering key from environment variable");
+    let key_pair = KeyPair::from_secret(
         key_string
             .trim_start_matches("0x")
             .parse()
             .chain_err(|| format!("failed to parse key"))?,
-    )?)
+    )?;
+    if key_pair.address() != concern.user_address {
+        Err(Error::from(ErrorKind::InvalidTransactionRequest(
+            format!("key not found for concern: {:?}", *concern).to_string(),
+        )))
+    } else {
+        Ok(key_pair)
+    }
 }
 
 impl TransactionManager {
     pub fn new(config: Configuration) -> Result<TransactionManager> {
-        // Change this by a properly handled ethstore
-        // let mut hard_coded_keys = HashMap::new();
-        // hard_coded_keys.insert(Address::from(ADDR), Secret::from(KEY));
-
         let url = config.url.clone();
 
         let mut concern_data = HashMap::new();
@@ -99,15 +104,12 @@ impl TransactionManager {
 
     pub fn send(
         &self,
-        request: TransactionRequest,
+        input_request: TransactionRequest,
     ) -> Box<Future<Item = (), Error = Error>> {
-        // async_block needs owned values, so let us clone
+        // async_block needs owned values, so let us clone some stuff
         let web3 = Rc::clone(&self.web3);
-
-        let concern = request.concern.clone();
-        let optional_key = self.concern_data.get(&concern);
-
-        let key = match optional_key {
+        let request = input_request.clone();
+        let key = match self.concern_data.get(&request.concern) {
             Some(k) => k,
             None => {
                 return Box::new(async_block! {
@@ -120,26 +122,38 @@ impl TransactionManager {
         .clone();
 
         Box::new(async_block! {
-            //let key = KeyPair::from_secret(self.secret.clone()).unwrap();
-            //let key = KeyPair::from_secret(Secret::from(KEY)).unwrap();
-
+            info!("Calculating nonce");
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)
             )?;
+            info!("Estimating gas price");
+            let gas_price = await!(web3.eth().gas_price())?;
+            info!("Estimating gas usage");
+            let call_request = web3::types::CallRequest {
+                from: Some(key.address()),
+                to: request.concern.contract_address,
+                gas: None,
+                gas_price: None,
+                value: Some(request.value),
+                data: Some(Bytes(request.data.clone())),
+            };
+            let gas = await!(web3.eth().estimate_gas(call_request, None))
+                .chain_err(|| format!("could not estimate gas usage"))?;
+            info!("Sending transaction");
             let signed_tx = Transaction {
-                action: Action::Call(key.address()),
+                action: Action::Call(request.concern.contract_address),
                 nonce: nonce,
-                gas_price: U256::from(3_000_000),
-                gas: U256::from(50_000),
-                value: U256::from(1),
-                data: b"".to_vec(),
+                // do something better then double
+                gas_price: U256::from(2).checked_mul(gas_price).unwrap(),
+                // do something better then double
+                gas: U256::from(2).checked_mul(gas).unwrap(),
+                value: request.value,
+                data: request.data,
             }
             .sign(&key.secret(), Some(69));
-
             let raw = Bytes::from(rlp::encode(&signed_tx));
-
             let a = await!(web3.eth().send_raw_transaction(raw));
-            println!("{:?}", a?);
+            info!("Transaction sent with hash: {:?}", a?);
             assert_eq!(Address::from(keccak(key.public())), signed_tx.sender());
             assert_eq!(signed_tx.chain_id(), Some(69));
             Ok(())
