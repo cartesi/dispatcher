@@ -43,14 +43,14 @@ impl Dispatcher {
         let web3 = web3::Web3::new(transport);
         web3.test_connection(&config).wait()?;
 
+        // transaction manager
+        let tm = TransactionManager::new(config.clone(), web3.clone())
+            .chain_err(|| format!("could not create transaction manager"))?;
+
         let ans = Dispatcher {
             config: config,
             web3: web3,
         };
-
-        // transaction manager
-        let tm = TransactionManager::new(ans.config.clone())
-            .chain_err(|| format!("could not create transaction manager"))?;
 
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // should change this to get the list and treat
