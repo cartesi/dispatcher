@@ -27,6 +27,7 @@ use futures::prelude::{async_block, await};
 use keccak_hash::keccak;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time;
 use web3::futures::Future;
 use web3::types::Bytes;
 
@@ -51,7 +52,7 @@ pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
     web3: Rc<web3::Web3<web3::transports::Http>>,
-    _eloop: web3::transports::EventLoopHandle, // needs to stay in scope
+    //_eloop: web3::transports::EventLoopHandle, // needs to stay in scope
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -78,7 +79,10 @@ fn recover_key(ref concern: &Concern) -> Result<KeyPair> {
 }
 
 impl TransactionManager {
-    pub fn new(config: Configuration) -> Result<TransactionManager> {
+    pub fn new(
+        config: Configuration,
+        web3: web3::Web3<web3::transports::Http>,
+    ) -> Result<TransactionManager> {
         let url = config.url.clone();
 
         let mut concern_data = HashMap::new();
@@ -87,18 +91,10 @@ impl TransactionManager {
             concern_data.insert(concern, ConcernData { key_pair: key });
         }
 
-        info!("Trying to connect to Eth node at {}", &url[..]);
-        let (_eloop, transport) = web3::transports::Http::new(&url[..])
-            .chain_err(|| {
-                format!("could not connect to Eth node at url: {}", &url[..])
-            })?;
-        let web3 = Rc::new(web3::Web3::new(transport));
-
         Ok(TransactionManager {
             config: config,
             concern_data: concern_data,
-            web3: web3,
-            _eloop: _eloop,
+            web3: Rc::new(web3),
         })
     }
 
@@ -122,13 +118,12 @@ impl TransactionManager {
         .clone();
 
         Box::new(async_block! {
-            info!("Calculating nonce");
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)
             )?;
-            info!("Estimating gas price");
+            info!("Nonce for {} is {}", key.address(), nonce);
             let gas_price = await!(web3.eth().gas_price())?;
-            info!("Estimating gas usage");
+            info!("Gas price estimated as {}", gas_price);
             let call_request = web3::types::CallRequest {
                 from: Some(key.address()),
                 to: request.concern.contract_address,
@@ -139,6 +134,7 @@ impl TransactionManager {
             };
             let gas = await!(web3.eth().estimate_gas(call_request, None))
                 .chain_err(|| format!("could not estimate gas usage"))?;
+            info!("Gas usage estimated as {}", gas);
             info!("Sending transaction");
             let signed_tx = Transaction {
                 action: Action::Call(request.concern.contract_address),
@@ -152,8 +148,18 @@ impl TransactionManager {
             }
             .sign(&key.secret(), Some(69));
             let raw = Bytes::from(rlp::encode(&signed_tx));
-            let a = await!(web3.eth().send_raw_transaction(raw));
-            info!("Transaction sent with hash: {:?}", a?);
+            //let hash = await!(web3.eth().send_raw_transaction(raw));
+
+            let poll_interval = time::Duration::from_secs(1);
+            let hash = await!(
+                web3::confirm::send_raw_transaction_with_confirmation(
+                    web3.transport().clone(),
+                    raw,
+                    poll_interval,
+                    1, // change this to variable configurable from concern
+                )
+            );
+            info!("Transaction sent with hash: {:?}", hash?);
             assert_eq!(Address::from(keccak(key.public())), signed_tx.sender());
             assert_eq!(signed_tx.chain_id(), Some(69));
             Ok(())
