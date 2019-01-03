@@ -5,6 +5,6 @@ url: "http://127.0.0.1:8545"
 #testing: true
 max_delay: 500
 warn_delay: 30
-concerns:
-  - { contract: "0x3930E4dDb4d24ef2F4CB54C1f009a3694b708428",
-      user: "0xAF6Db79D717c176C64Cc1ff07930367a870f9968" }
+concerns: []
+#  - { contract_address: "0x3930E4dDb4d24ef2F4CB54C1f009a3694b708428",
+#      user_address: "0xAF6Db79D717c176C64Cc1ff07930367a870f9968" }
