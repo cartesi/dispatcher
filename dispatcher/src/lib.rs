@@ -11,6 +11,7 @@ extern crate ethabi;
 extern crate ethcore_transaction;
 extern crate hex;
 extern crate serde_json;
+extern crate state;
 extern crate transaction;
 
 use configuration::Configuration;
@@ -18,6 +19,7 @@ pub use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
 use serde_json::Value;
+use state::StateManager;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
@@ -25,6 +27,8 @@ use web3::futures::Future;
 pub struct Dispatcher {
     config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
+    transaction_manager: TransactionManager,
+    state_manager: StateManager,
 }
 
 impl Dispatcher {
@@ -43,19 +47,35 @@ impl Dispatcher {
         let web3 = web3::Web3::new(transport);
         web3.test_connection(&config).wait()?;
 
-        // transaction manager
-        let tm = TransactionManager::new(config.clone(), web3.clone())
-            .chain_err(|| format!("could not create transaction manager"))?;
+        info!("Creating transaction manager");
+        let transaction_manager =
+            TransactionManager::new(config.clone(), web3.clone()).chain_err(
+                || format!("could not create transaction manager"),
+            )?;
 
-        let ans = Dispatcher {
+        info!("Creating state manager");
+        let state_manager = StateManager::new(config.clone(), web3.clone())?;
+
+        let dispatcher = Dispatcher {
             config: config,
             web3: web3,
+            transaction_manager: transaction_manager,
+            state_manager: state_manager,
         };
 
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        // should change this to get the list and treat
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        let main_concern = ans.config.concerns[0].clone();
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // should change this to get the list and treat each element
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        let main_concern = dispatcher.config.concerns[0].clone();
+
+        info!("Getting issues for concern: {:?}", main_concern);
+        let issues = dispatcher
+            .state_manager
+            .get_issues(main_concern)
+            .wait()
+            .chain_err(|| format!("could not get issues"))?;
+
+        return Ok(dispatcher);
 
         info!("Getting contract's abi from truffle");
         // change this to proper handling of file
@@ -67,9 +87,10 @@ impl Dispatcher {
 
         // failed attempt to check contract's code.
         // Should use the data submitted during transaction creation instead
+        // use binary_search or binary_search_by provided by Vec
         //
         // info!("Getting contract's code from node");
-        // let code = ans
+        // let code = dispatcher
         //     .web3
         //     .eth()
         //     .code(main_concern.contract_address, None)
@@ -106,10 +127,12 @@ impl Dispatcher {
         };
 
         info!("Sending call to instantiate");
-        tm.send(req)
+        dispatcher
+            .transaction_manager
+            .send(req)
             .wait()
             .chain_err(|| format!("transaction manager failed to send"))?;
 
-        Ok(ans)
+        Ok(dispatcher)
     }
 }

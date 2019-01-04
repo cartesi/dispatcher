@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 #[macro_use]
 extern crate error_chain;
 extern crate envy;
@@ -19,6 +21,7 @@ error_chain! {
         HexParse(rustc_hex::FromHexError);
         EthAbi(ethabi::Error);
         JsonParse(serde_json::Error);
+        Web3Contract(web3::contract::Error);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
@@ -37,6 +40,10 @@ error_chain! {
         InvalidTransactionRequest(details: String) {
             description("request of transaction invalid")
                 display("request of transaction invalid: {}", details)
+        }
+        InvalidStateRequest(details: String) {
+            description("request of state invalid")
+                display("request of state invalid: {}", details)
         }
     }
 }

@@ -1,0 +1,18 @@
+[package]
+description = "Cartesi Transaction Manager"
+homepage = "https://cartesi.io"
+name = "state"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+log = "0.4"
+env_logger = "0.6.0"
+error = { path = "../error" }
+configuration = { path = "../configuration" }
+ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
+ethereum-types = "0.4"
+web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+futures-await = "0.1"
+ethabi = "6.1.0"
+serde_json = "1.0"

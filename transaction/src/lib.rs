@@ -52,7 +52,6 @@ pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
     web3: Rc<web3::Web3<web3::transports::Http>>,
-    //_eloop: web3::transports::EventLoopHandle, // needs to stay in scope
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -83,8 +82,6 @@ impl TransactionManager {
         config: Configuration,
         web3: web3::Web3<web3::transports::Http>,
     ) -> Result<TransactionManager> {
-        let url = config.url.clone();
-
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
             let key = recover_key(&concern)?;
