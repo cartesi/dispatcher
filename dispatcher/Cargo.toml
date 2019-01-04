@@ -11,6 +11,7 @@ error = { path = "../error" }
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 configuration = { path = "../configuration" }
 transaction = { path = "../transaction" }
+state = { path = "../state" }
 utils = { path = "../utils" }
 log = "0.4"
 env_logger = "0.6.0"
