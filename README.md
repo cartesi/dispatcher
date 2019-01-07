@@ -10,10 +10,10 @@ The main goals of our design are in the following order:
 - To assure *safety*. Among other things against: power failures, attacks, lost transactions.
 - *Easy development*. DApps that use our infrastructure and adhere to our designs should have to worry much less about blockchain idiosyncrasies, no concerns with various instances running in parallel, no async programming, no worries about branching histories in the main chain.
 
-To achieve these goes we will minimize the state that is kept by the application.
+To achieve these goals we will minimize the state that is kept by the application.
 And whenever some state is unavoidable, we will build a safe and ergonomic interface around this state for the dApp developer.
 
-This high-level goals also requires a modular architecture, so that we can encapsulate the state inside modules with clear interfaces, thus approaching a functional design.
+These high-level goals also require a modular architecture, so that we can encapsulate the state inside modules with clear interfaces, thus approaching a functional design.
 Modularity is also beneficial as it facilitates development and tests.
 
 ## Taming the state
@@ -22,7 +22,7 @@ Concerning the state, we have the following preferences (in decreasing order):
 
 - no state at all,
 - cache-only state (that can be reconstructed from other states),
-- append-only state (no need version control)
+- append-only state (no need of version control)
 
 Moreover, when we have an unavoidable state, we should keep it encapsulated inside a single component that "owns that state".
 
@@ -39,7 +39,7 @@ Every other state in the system should be able to bootstrap from the above ones.
 ## Overall Structure
 
 The purpose of each of these components is briefly described below.
-Later we will give an overview of the Dispatcher Loop, than a more detailed description of each module.
+Later we will give an overview of the Dispatcher Loop, then a more detailed description of each module.
 
 <img src="components.png" alt="drawing" width="500"/>
 
@@ -48,6 +48,7 @@ Later we will give an overview of the Dispatcher Loop, than a more detailed desc
 This component contains the main loop of the application, observing the state of the blockchain and acting on the behalf of the dApp.
 This component is very central in the sense that it communicates to various others in the system.
 This apparent complexity is mitigated by the fact that it contains no state and can always gracefully recover from a power-down.
+
 
 ### Transaction Manager
 
