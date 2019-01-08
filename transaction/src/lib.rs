@@ -58,9 +58,12 @@ pub struct TransactionManager {
 // we need to implement recovering keys in keystore
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 fn recover_key(ref concern: &Concern) -> Result<KeyPair> {
-    let key_string: String = std::env::var("CONCERN_KEY").chain_err(|| {
-        format!("for now, keys must be provided as env variable, provide one")
-    })?;
+    let key_string: String =
+        std::env::var("CARTESI_CONCERN_KEY").chain_err(|| {
+            format!(
+                "for now, keys must be provided as env variable, provide one"
+            )
+        })?;
     info!("recovering key from environment variable");
     let key_pair = KeyPair::from_secret(
         key_string

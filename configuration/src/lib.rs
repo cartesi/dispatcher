@@ -7,6 +7,7 @@ extern crate serde_derive;
 extern crate structopt;
 #[macro_use]
 extern crate log;
+extern crate db_key;
 extern crate ethereum_types;
 extern crate hex;
 extern crate time;
@@ -20,14 +21,46 @@ use ethereum_types::Address;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 use structopt::StructOpt;
 use time::Duration;
 
 /// A concern is a pair: smart contract and user
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq, Copy)]
 pub struct Concern {
     pub contract_address: Address,
     pub user_address: Address,
+}
+
+impl db_key::Key for Concern {
+    fn from_u8(key: &[u8]) -> Concern {
+        use std::mem::transmute;
+
+        assert!(key.len() == 40);
+        let mut result: [u8; 40] = [0; 40];
+
+        for (i, val) in key.iter().enumerate() {
+            result[i] = *val;
+        }
+
+        unsafe { transmute(result) }
+    }
+
+    fn as_slice<T, F: Fn(&[u8]) -> T>(&self, f: F) -> T {
+        use std::mem::transmute;
+
+        let val = unsafe { transmute::<_, &[u8; 40]>(self) };
+        f(val)
+    }
+}
+
+impl Concern {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut result: [u8; 40] = [0; 40];
+        self.contract_address.copy_to(&mut result[0..20]);
+        self.user_address.copy_to(&mut result[20..40]);
+        return Vec::from(&result[..]);
+    }
 }
 
 /// Structure for parsing configurations, both Environment and CLI arguments
@@ -55,6 +88,9 @@ struct EnvCLIConfiguration {
     /// Special concern's user address
     #[structopt(long = "concern_user")]
     concern_user: Option<String>,
+    /// Working path
+    #[structopt(long = "working_path")]
+    working_path: Option<String>,
 }
 
 /// Structure to parse configuration from file
@@ -65,6 +101,7 @@ struct FileConfiguration {
     max_delay: Option<u64>,
     warn_delay: Option<u64>,
     concerns: Vec<Concern>,
+    working_path: Option<String>,
 }
 
 /// Configuration after parsing
@@ -75,6 +112,7 @@ pub struct Configuration {
     pub max_delay: Duration,
     pub warn_delay: Duration,
     pub concerns: Vec<Concern>,
+    pub working_path: PathBuf,
 }
 
 impl fmt::Display for Configuration {
@@ -101,12 +139,13 @@ impl Configuration {
     pub fn new() -> Result<Configuration> {
         // try to load config from CLI arguments
         let cli_config = EnvCLIConfiguration::from_args();
-        info!("CLI args: {:?}", cli_config);
+        info!("CLI args: {:?}", cli_config); // implement Display instead
         println!("Bla");
 
         // try to load config from env
-        let env_config = envy::from_env::<EnvCLIConfiguration>()?;
-        info!("Env args: {:?}", env_config);
+        let env_config =
+            envy::prefixed("CARTESI_").from_env::<EnvCLIConfiguration>()?;
+        info!("Env args: {:?}", env_config); // implement Display instead
 
         // determine path to configuration file
         let config_path = cli_config
@@ -214,6 +253,15 @@ fn combine_config(
         .or(file_config.warn_delay)
         .unwrap_or(DEFAULT_WARN_DELAY);
 
+    // determine working path (cli -> env -> config)
+    let working_path = PathBuf::from(&cli_config
+        .working_path
+        .or(env_config.working_path)
+        .or(file_config.working_path)
+        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Need to provide working path (config file, command line or env)",
+        ))))?);
+
     info!("determine cli concern");
     let cli_concern =
         validate_concern(cli_config.concern_contract, cli_config.concern_user)?;
@@ -237,5 +285,6 @@ fn combine_config(
         max_delay: Duration::seconds(max_delay as i64),
         warn_delay: Duration::seconds(warn_delay as i64),
         concerns: concerns,
+        working_path: working_path,
     })
 }
