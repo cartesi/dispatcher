@@ -71,9 +71,18 @@ impl Dispatcher {
         info!("Getting issues for concern: {:?}", main_concern);
         let issues = dispatcher
             .state_manager
-            .get_issues(main_concern)
+            .get_instances(main_concern.clone())
             .wait()
             .chain_err(|| format!("could not get issues"))?;
+
+        println!("{:?}", issues);
+
+        let instance = dispatcher
+            .state_manager
+            .get_state(main_concern.clone().contract_address, issues[0])
+            .wait();
+
+        println!("{:?}", instance);
 
         return Ok(dispatcher);
 

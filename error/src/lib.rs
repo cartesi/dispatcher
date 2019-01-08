@@ -1,3 +1,4 @@
+#![feature(try_trait)]
 #![recursion_limit = "128"]
 
 #[macro_use]
@@ -22,6 +23,8 @@ error_chain! {
         EthAbi(ethabi::Error);
         JsonParse(serde_json::Error);
         Web3Contract(web3::contract::Error);
+        LevelDB(leveldb::error::Error);
+        Utf8(std::str::Utf8Error);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
