@@ -23,8 +23,14 @@ use ethabi::Token;
 use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
 use futures::prelude::{async_block, await};
+use leveldb::database::Database;
+use leveldb::iterator::Iterable;
+use leveldb::kv::KV;
+use leveldb::options::{ReadOptions, WriteOptions};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::rc::Rc;
 use web3::contract::Options;
 use web3::futures::future::Either;
@@ -33,16 +39,12 @@ use web3::futures::Future;
 use web3::futures::Stream;
 use web3::types::{Bytes, CallRequest};
 
-use leveldb::database::Database;
-use leveldb::iterator::Iterable;
-use leveldb::kv::KV;
-use leveldb::options::{ReadOptions, WriteOptions};
-
 #[derive(Clone, Debug)]
 pub struct Instance {
-    contract_address: Address,
+    concern: Concern,
     index: U256,
-    sub_instances: Box<Vec<Instance>>,
+    json_data: String,
+    sub_instances: Vec<Box<Instance>>,
 }
 
 struct ConcernData {
@@ -67,14 +69,6 @@ impl StateManager {
         config: Configuration,
         web3: web3::Web3<web3::transports::http::Http>,
     ) -> Result<StateManager> {
-        info!("Getting contract's abi from truffle");
-        // change this to proper file handling
-        let truffle_dump = include_str!(
-            "/home/augusto/contracts/build/contracts/Instantiator.json"
-        );
-        let v: Value = serde_json::from_str(truffle_dump)
-            .chain_err(|| format!("could not read truffle json file"))?;
-
         info!("Opening state manager database");
         let mut options = leveldb::options::Options::new();
         // if no database is found we start an empty one (no cache)
@@ -90,6 +84,15 @@ impl StateManager {
         info!("Preparing data for {} concerns", config.concerns.len());
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
+            info!("Getting contract's abi from truffle");
+            // change this to proper file handling
+            let abi_path = &config.abis.get(&concern).unwrap().abi;
+            let mut file = File::open(abi_path)?;
+            let mut s = String::new();
+            let truffle_abi = file.read_to_string(&mut s)?;
+            let v: Value = serde_json::from_str(&s[..])
+                .chain_err(|| format!("could not read truffle json file"))?;
+
             // create a contract object
             let contract = web3::contract::Contract::from_json(
                 web3.eth().clone(),
@@ -278,34 +281,50 @@ impl StateManager {
         }))
     }
 
-    pub fn get_state(
+    pub fn get_instance(
         &self,
-        contract_address: Address,
+        concern: Concern,
         index: usize,
     ) -> Box<Future<Item = Vec<Instance>, Error = Error>> {
-        let instance = Instance {
-            contract_address: contract_address,
+        // this first implementation is completely synchronous
+        // since we wait for the futures. But in the future we could
+        // use futures::future::loop_fn to interactively explore the
+        // tree of Instance.
+        let contract = Rc::clone(
+            &match self.concern_data.get(&concern) {
+                Some(k) => k,
+                None => {
+                    return Box::new(async_block! {
+                    Err(Error::from(ErrorKind::InvalidStateRequest(
+                        String::from("Concern requested not found"),
+                    )))});
+                }
+            }
+            .contract,
+        );
+
+        // use this instead:
+        // https://tomusdrw.github.io/rust-web3/src/web3/
+        // contract/mod.rs.html#177-206
+
+        let state: Value = contract
+            .query(
+                "getState",
+                U256::from(index),
+                None,
+                Options::default(),
+                None,
+            )
+            .wait()?;
+        println!("State = {:?}", state);
+
+        let starting_instance = Instance {
+            concern: concern,
             index: U256::from(index),
-            sub_instances: Box::new(vec![]),
+            json_data: "".to_string(),
+            sub_instances: vec![],
         };
 
-        Box::new(
-            //filtered_cache.and_then(move |cache| {
-            // let  = cache_list.iter().map(|index| {
-            //     let i = index.clone();
-            //     contract
-            //         .query(
-            //             "isActive",
-            //             (U256::from(i)),
-            //             None,
-            //             Options::default(),
-            //             None,
-            //         )
-            //         .map(move |active: bool| (i, active))
-            //         .map_err(|e| Error::from(e))
-            // });
-            //}
-            futures::future::ok(vec![instance]),
-        )
+        Box::new(futures::future::ok(vec![starting_instance]))
     }
 }
