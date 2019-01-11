@@ -2,6 +2,7 @@ extern crate env_logger;
 extern crate envy;
 extern crate error;
 
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate structopt;
@@ -18,6 +19,7 @@ const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
 use ethereum_types::Address;
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
@@ -30,6 +32,27 @@ use time::Duration;
 pub struct Concern {
     pub contract_address: Address,
     pub user_address: Address,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConcernAbi {
+    pub abi: PathBuf,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct FullConcern {
+    contract_address: Address,
+    user_address: Address,
+    abi: PathBuf,
+}
+
+impl From<FullConcern> for Concern {
+    fn from(full: FullConcern) -> Self {
+        Concern {
+            contract_address: full.contract_address,
+            user_address: full.user_address,
+        }
+    }
 }
 
 impl db_key::Key for Concern {
@@ -82,12 +105,15 @@ struct EnvCLIConfiguration {
     /// Level of delay for Ethereum node that should trigger warnings
     #[structopt(short = "w", long = "warn")]
     warn_delay: Option<u64>,
-    /// Special concern's contract
+    /// Main concern's contract's address
     #[structopt(long = "concern_contract")]
-    concern_contract: Option<String>,
-    /// Special concern's user address
+    main_concern_contract: Option<String>,
+    /// Main concern's user address
     #[structopt(long = "concern_user")]
-    concern_user: Option<String>,
+    main_concern_user: Option<String>,
+    /// Main concern's contract's abi
+    #[structopt(long = "concern_abi")]
+    main_concern_abi: Option<String>,
     /// Working path
     #[structopt(long = "working_path")]
     working_path: Option<String>,
@@ -100,7 +126,8 @@ struct FileConfiguration {
     testing: Option<bool>,
     max_delay: Option<u64>,
     warn_delay: Option<u64>,
-    concerns: Vec<Concern>,
+    main_concern: Option<FullConcern>,
+    concerns: Vec<FullConcern>,
     working_path: Option<String>,
 }
 
@@ -111,8 +138,10 @@ pub struct Configuration {
     pub testing: bool,
     pub max_delay: Duration,
     pub warn_delay: Duration,
+    pub main_concern: Concern,
     pub concerns: Vec<Concern>,
     pub working_path: PathBuf,
+    pub abis: HashMap<Concern, ConcernAbi>,
 }
 
 impl fmt::Display for Configuration {
@@ -123,7 +152,7 @@ impl fmt::Display for Configuration {
              Testing: {}\
              Max delay: {}\
              Warning delay: {}\
-             Number of concerns: {} }}",
+             Number of extra concerns: {} }}",
             self.url,
             self.testing,
             self.max_delay,
@@ -193,10 +222,11 @@ impl Configuration {
 fn validate_concern(
     contract: Option<String>,
     user: Option<String>,
-) -> Result<Option<Concern>> {
+    abi: Option<String>,
+) -> Result<Option<FullConcern>> {
     // if some option is Some, both should be
-    if contract.is_some() || user.is_some() {
-        Ok(Some(Concern {
+    if contract.is_some() || user.is_some() || abi.is_some() {
+        Ok(Some(FullConcern {
             contract_address: contract
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's contract should be specified",
@@ -211,6 +241,12 @@ fn validate_concern(
                 .trim_start_matches("0x")
                 .parse()
                 .chain_err(|| format!("failed to parse user address"))?,
+            abi: abi
+                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+                    "Concern's abi should be specified",
+                ))))?
+                .parse()
+                .chain_err(|| format!("failed to parse contract's abi"))?,
         }))
     } else {
         Ok(None)
@@ -263,28 +299,62 @@ fn combine_config(
         ))))?);
 
     info!("determine cli concern");
-    let cli_concern =
-        validate_concern(cli_config.concern_contract, cli_config.concern_user)?;
+    let cli_main_concern = validate_concern(
+        cli_config.main_concern_contract,
+        cli_config.main_concern_user,
+        cli_config.main_concern_abi,
+    )?;
 
     info!("determine env concern");
-    let env_concern =
-        validate_concern(env_config.concern_contract, env_config.concern_user)?;
+    let env_main_concern = validate_concern(
+        env_config.main_concern_contract,
+        env_config.main_concern_user,
+        env_config.main_concern_abi,
+    )?;
 
     // determine the concerns (start from file and push CLI and Environment)
-    let mut concerns = file_config.concerns;
-    if let Some(c) = cli_concern {
-        concerns.push(c);
-    };
-    if let Some(c) = env_concern {
-        concerns.push(c);
-    };
+    let full_concerns = file_config.concerns;
+
+    // determine main concern (cli -> env -> config)
+    let main_concern = cli_main_concern
+        .or(env_main_concern)
+        .or(file_config.main_concern)
+        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Need to provide main concern (config file, command line or env)",
+        ))))?;
+
+    let mut abis: HashMap<Concern, ConcernAbi> = HashMap::new();
+    let mut concerns: Vec<Concern> = vec![];
+
+    // insert all full concerns into concerns and abis
+    for full_concern in full_concerns {
+        // store concern data in hash table
+        abis.insert(
+            Concern::from(full_concern.clone()).clone(),
+            ConcernAbi {
+                abi: full_concern.abi.clone(),
+            },
+        );
+        concerns.push(full_concern.into());
+    }
+
+    // insert main full concern in concerns and abis
+    abis.insert(
+        Concern::from(main_concern.clone()).clone(),
+        ConcernAbi {
+            abi: main_concern.abi.clone(),
+        },
+    );
+    concerns.push(main_concern.clone().into());
 
     Ok(Configuration {
         url: url,
         testing: testing,
         max_delay: Duration::seconds(max_delay as i64),
         warn_delay: Duration::seconds(warn_delay as i64),
+        main_concern: main_concern.into(),
         concerns: concerns,
         working_path: working_path,
+        abis: abis,
     })
 }

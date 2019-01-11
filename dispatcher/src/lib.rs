@@ -66,20 +66,20 @@ impl Dispatcher {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // should change this to get the list and treat each element
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        let main_concern = dispatcher.config.concerns[0].clone();
+        let main_concern = dispatcher.config.main_concern.clone();
 
         info!("Getting issues for concern: {:?}", main_concern);
-        let issues = dispatcher
+        let instances = dispatcher
             .state_manager
             .get_instances(main_concern.clone())
             .wait()
             .chain_err(|| format!("could not get issues"))?;
 
-        println!("{:?}", issues);
+        println!("{:?}", instances);
 
         let instance = dispatcher
             .state_manager
-            .get_state(main_concern.clone().contract_address, issues[0])
+            .get_instance(main_concern, instances[0])
             .wait();
 
         println!("{:?}", instance);
