@@ -75,14 +75,15 @@ impl Dispatcher {
             .wait()
             .chain_err(|| format!("could not get issues"))?;
 
-        println!("{:?}", instances);
+        println!("Instances that we care and are active: {:?}", instances);
 
-        let instance = dispatcher
-            .state_manager
-            .get_instance(main_concern, instances[0])
-            .wait();
-
-        println!("{:?}", instance);
+        for instance in instances.iter() {
+            println!("instance: {}", *instance);
+            let i = dispatcher
+                .state_manager
+                .get_instance(main_concern, *instance)
+                .wait()?;
+        }
 
         return Ok(dispatcher);
 
