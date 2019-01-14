@@ -91,7 +91,7 @@ impl Concern {
 #[structopt(name = "basic")]
 struct EnvCLIConfiguration {
     /// Path to configuration file
-    #[structopt(short = "c", long = "config")]
+    #[structopt(short = "c", long = "config_path")]
     config_path: Option<String>,
     /// Url for the Ethereum node
     #[structopt(short = "u", long = "url")]
@@ -120,7 +120,7 @@ struct EnvCLIConfiguration {
 }
 
 /// Structure to parse configuration from file
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct FileConfiguration {
     url: Option<String>,
     testing: Option<bool>,
@@ -166,25 +166,23 @@ impl Configuration {
     /// Creates a Configuration from a file as well as the Environment
     /// and CLI arguments
     pub fn new() -> Result<Configuration> {
-        // try to load config from CLI arguments
+        info!("Load config from CLI arguments");
         let cli_config = EnvCLIConfiguration::from_args();
         info!("CLI args: {:?}", cli_config); // implement Display instead
-        println!("Bla");
 
-        // try to load config from env
+        info!("Load config from environment variables");
         let env_config =
             envy::prefixed("CARTESI_").from_env::<EnvCLIConfiguration>()?;
         info!("Env args: {:?}", env_config); // implement Display instead
 
-        // determine path to configuration file
+        info!("Load config from file");
         let config_path = cli_config
             .config_path
             .as_ref()
             .or(env_config.config_path.as_ref())
             .unwrap_or(&DEFAULT_CONFIG_PATH.to_string())
             .clone();
-
-        // try to read config from file
+        info!("Config file path is {}", config_path.clone());
         let mut file = File::open(&config_path[..]).chain_err(|| {
             format!("unable to read configuration file: {}", config_path)
         })?;
@@ -192,6 +190,7 @@ impl Configuration {
         file.read_to_string(&mut contents).chain_err(|| {
             format!("could not read from configuration file: {}", config_path)
         })?;
+        println!("File {}", contents.clone());
         let file_config: FileConfiguration =
             serde_yaml::from_str(&contents[..])
                 .map_err(|e| error::Error::from(e))
@@ -201,6 +200,7 @@ impl Configuration {
                         config_path
                     )
                 })?;
+        info!("File config: {:?}", file_config.clone());
 
         // merge these three configurations
         let config = combine_config(cli_config, env_config, file_config)?;
@@ -312,7 +312,6 @@ fn combine_config(
         env_config.main_concern_abi,
     )?;
 
-    // determine the concerns (start from file and push CLI and Environment)
     let full_concerns = file_config.concerns;
 
     // determine main concern (cli -> env -> config)
@@ -326,6 +325,7 @@ fn combine_config(
     let mut abis: HashMap<Concern, ConcernAbi> = HashMap::new();
     let mut concerns: Vec<Concern> = vec![];
 
+    warn!("{}", full_concerns.len());
     // insert all full concerns into concerns and abis
     for full_concern in full_concerns {
         // store concern data in hash table

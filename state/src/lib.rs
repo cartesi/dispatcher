@@ -39,6 +39,8 @@ use web3::futures::Future;
 use web3::futures::Stream;
 use web3::types::{Bytes, CallRequest};
 
+use web3::contract::tokens::Tokenize;
+
 #[derive(Clone, Debug)]
 pub struct Instance {
     concern: Concern,
@@ -49,6 +51,7 @@ pub struct Instance {
 
 struct ConcernData {
     contract: Rc<web3::contract::Contract<web3::transports::http::Http>>,
+    abi: Rc<ethabi::Contract>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -84,9 +87,13 @@ impl StateManager {
         info!("Preparing data for {} concerns", config.concerns.len());
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
-            info!("Getting contract's abi from truffle");
-            // change this to proper file handling
             let abi_path = &config.abis.get(&concern).unwrap().abi;
+            trace!(
+                "Getting contract {} abi from file {:?}",
+                &concern.contract_address,
+                &abi_path
+            );
+            // change this to proper file handling
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
             let truffle_abi = file.read_to_string(&mut s)?;
@@ -101,11 +108,18 @@ impl StateManager {
             )
             .chain_err(|| format!("could not decode json abi"))?;
 
+            // create a low level abi for contract
+            let abi = ethabi::Contract::load(
+                serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
+            )?;
+
             // store concern data in hash table
+            trace!("Inserting concern {:?}", concern.clone());
             concern_data.insert(
                 concern.clone(),
                 ConcernData {
                     contract: Rc::new(contract),
+                    abi: Rc::new(abi),
                 },
             );
         }
@@ -290,39 +304,132 @@ impl StateManager {
         // since we wait for the futures. But in the future we could
         // use futures::future::loop_fn to interactively explore the
         // tree of Instance.
+        trace!("Retrieving contract {}", &concern.contract_address);
         let contract = Rc::clone(
-            &match self.concern_data.get(&concern) {
-                Some(k) => k,
+            &match &self.concern_data.get(&concern) {
+                Some(s) => s,
                 None => {
-                    return Box::new(async_block! {
-                    Err(Error::from(ErrorKind::InvalidStateRequest(
-                        String::from("Concern requested not found"),
-                    )))});
+                    return Box::new(futures::future::err(Error::from(
+                        ErrorKind::InvalidStateRequest(String::from(format!(
+                            "Concern requested {:?} not found",
+                            concern.clone()
+                        ))),
+                    )));
                 }
             }
             .contract,
         );
+        trace!("Retrieving abi for contract {}", &concern.contract_address);
+        let abi = Rc::clone(&self.concern_data.get(&concern).unwrap().abi);
 
-        // use this instead:
-        // https://tomusdrw.github.io/rust-web3/src/web3/
-        // contract/mod.rs.html#177-206
+        //contract.abi;
+        // let state = match contract
+        //     .query(
+        //         "getState",
+        //         U256::from(index),
+        //         None,
+        //         Options::default(),
+        //         None,
+        //     )
+        //     .map(|_: Value| ())
+        //     .wait()
+        // {
+        //     Ok(s) => s,
+        //     Err(e) => return Box::new(futures::future::err(e).into()),
+        // };
 
-        let state: Value = contract
-            .query(
-                "getState",
-                U256::from(index),
-                None,
-                Options::default(),
-                None,
+        let function = match abi.function("getState".into()) {
+            Ok(s) => s,
+            Err(e) => return Box::new(futures::future::err(Error::from(e))),
+        };
+
+        let call = match function.encode_input(&U256::from(index).into_tokens())
+        {
+            Ok(s) => s,
+            Err(e) => return Box::new(futures::future::err(Error::from(e))),
+        };
+
+        let state = self
+            .web3
+            .eth()
+            .call(
+                CallRequest {
+                    from: None.into(),
+                    to: contract.address().clone(),
+                    gas: None.into(),
+                    gas_price: None.into(),
+                    value: None.into(),
+                    data: Some(Bytes(call)),
+                },
+                None.into(),
             )
-            .wait()?;
-        println!("State = {:?}", state);
+            .and_then(|result| {
+                let types = &function.outputs;
+                let tokens = function.decode_output(&result.0).unwrap();
+
+                assert_eq!(types.len(), tokens.len());
+
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                // replace this by proper serialization
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                let response: Vec<String> = types
+                    .iter()
+                    .zip(tokens.iter())
+                    .map(|(ty, to)| {
+                        format!(
+                            "{{ \"name\": \"{}\", \"type\": \"{}\", \"value\": \"{}\" }},",
+                            ty.name, ty.kind, to
+                        )
+                    })
+                    .collect();
+
+                Ok(format!("[{}]", response.join("\n")))
+            });
+
+        let json_data = match state.wait() {
+            Ok(s) => s,
+            Err(e) => return Box::new(futures::future::err(Error::from(e))),
+        };
+
+        let (sub_address, sub_indices): (Vec<Address>, Vec<U256>) =
+            match contract
+                .query(
+                    "getSubInstances",
+                    U256::from(index),
+                    None,
+                    Options::default(),
+                    None,
+                )
+                .wait()
+            {
+                Ok(s) => s,
+                Err(e) => return Box::new(futures::future::err(Error::from(e))),
+            };
+
+        assert_eq!(sub_address.len(), sub_indices.len());
+        let sub_instance_indices = sub_address.iter().zip(sub_indices.iter());
+
+        let sub_instances = vec![];
+
+        for instance in sub_instance_indices {
+            println!("{:?}", instance.clone());
+
+            let c = Concern {
+                contract_address: *instance.0,
+                user_address: concern.user_address,
+            };
+
+            let j =
+                &self.get_instance(c, instance.1.as_usize()).wait().unwrap();
+        }
+
+        //println!("{:?}", sub_instances);
 
         let starting_instance = Instance {
             concern: concern,
             index: U256::from(index),
-            json_data: "".to_string(),
-            sub_instances: vec![],
+            json_data: json_data,
+            sub_instances: sub_instances,
         };
 
         Box::new(futures::future::ok(vec![starting_instance]))
