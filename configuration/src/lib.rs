@@ -325,7 +325,6 @@ fn combine_config(
     let mut abis: HashMap<Concern, ConcernAbi> = HashMap::new();
     let mut concerns: Vec<Concern> = vec![];
 
-    warn!("{}", full_concerns.len());
     // insert all full concerns into concerns and abis
     for full_concern in full_concerns {
         // store concern data in hash table

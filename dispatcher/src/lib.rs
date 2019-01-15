@@ -68,21 +68,19 @@ impl Dispatcher {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         let main_concern = dispatcher.config.main_concern.clone();
 
-        info!("Getting issues for concern: {:?}", main_concern);
+        info!("Getting instances for {:?}", main_concern);
         let instances = dispatcher
             .state_manager
             .get_instances(main_concern.clone())
             .wait()
             .chain_err(|| format!("could not get issues"))?;
 
-        println!("Instances that we care and are active: {:?}", instances);
-
         for instance in instances.iter() {
-            println!("instance: {}", *instance);
             let i = dispatcher
                 .state_manager
                 .get_instance(main_concern, *instance)
                 .wait()?;
+            //println!("{:?}", i);
         }
 
         return Ok(dispatcher);

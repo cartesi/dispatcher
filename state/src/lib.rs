@@ -52,6 +52,7 @@ pub struct Instance {
 struct ConcernData {
     contract: Rc<web3::contract::Contract<web3::transports::http::Http>>,
     abi: Rc<ethabi::Contract>,
+    file_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -120,6 +121,15 @@ impl StateManager {
                 ConcernData {
                     contract: Rc::new(contract),
                     abi: Rc::new(abi),
+                    file_name: String::from(
+                        abi_path
+                            .clone()
+                            .as_path()
+                            .file_stem()
+                            .unwrap()
+                            .to_str()
+                            .unwrap(),
+                    ),
                 },
             );
         }
@@ -132,6 +142,7 @@ impl StateManager {
         })
     }
 
+    /// Gets the information about a given concern as it was stored in db
     fn get_concern_cache(&self, ref concern: &Concern) -> Result<ConcernCache> {
         let database = Rc::clone(&self.database);
         trace!("Reading cached database for concern {:?}", concern);
@@ -151,6 +162,7 @@ impl StateManager {
             }))
     }
 
+    /// Gets an expanded version of the instances by querying the blockchain
     fn get_expanded_cache(
         &self,
         concern: Concern,
@@ -233,6 +245,7 @@ impl StateManager {
         }));
     }
 
+    /// Get all instances, by querying cache, blockchain and then filtering
     pub fn get_instances(
         &self,
         concern: Concern,
@@ -253,9 +266,11 @@ impl StateManager {
         let expanded_cache = self.get_expanded_cache(concern);
         let database = Rc::clone(&self.database);
 
-        Box::new(expanded_cache.and_then(move |cache| {
+        return Box::new(expanded_cache.and_then(move |cache| {
             let cache_list = cache.list_instances.clone();
             trace!("Removing inactive instances");
+            // for each instance in the list, build a future that resolves
+            // to whether that instance is active
             let active_futures = cache_list.iter().map(|index| {
                 let i = index.clone();
                 contract
@@ -269,7 +284,7 @@ impl StateManager {
                     .map(move |active: bool| (i, active))
                     .map_err(|e| Error::from(e))
             });
-
+            // create a stream of the above list of futures as they resolve
             stream::futures_unordered(active_futures)
                 .filter_map(move |(index, is_active)| {
                     Some(index).filter(|_| is_active)
@@ -292,51 +307,44 @@ impl StateManager {
                         .unwrap();
                     vector_of_indices
                 })
-        }))
+        }));
     }
 
     pub fn get_instance(
         &self,
         concern: Concern,
         index: usize,
-    ) -> Box<Future<Item = Vec<Instance>, Error = Error>> {
+    ) -> Box<Future<Item = Instance, Error = Error>> {
         // this first implementation is completely synchronous
-        // since we wait for the futures. But in the future we could
-        // use futures::future::loop_fn to interactively explore the
-        // tree of Instance.
-        trace!("Retrieving contract {}", &concern.contract_address);
-        let contract = Rc::clone(
-            &match &self.concern_data.get(&concern) {
-                Some(s) => s,
-                None => {
-                    return Box::new(futures::future::err(Error::from(
-                        ErrorKind::InvalidStateRequest(String::from(format!(
-                            "Concern requested {:?} not found",
-                            concern.clone()
-                        ))),
-                    )));
-                }
-            }
-            .contract,
+        // since we wait for all internal futures and then return
+        // an imediatly available future. But we should refactor this
+        // using futures::future::loop_fn to interactively explor th
+        // tree of instances.
+        trace!(
+            "Get concern data for contract {}, index {}",
+            concern.contract_address,
+            index
         );
-        trace!("Retrieving abi for contract {}", &concern.contract_address);
-        let abi = Rc::clone(&self.concern_data.get(&concern).unwrap().abi);
+        let concern_data = match &self.concern_data.get(&concern) {
+            Some(s) => s,
+            None => {
+                return Box::new(futures::future::err(Error::from(
+                    ErrorKind::InvalidStateRequest(String::from(format!(
+                        "Concern requested {:?} not found",
+                        concern.clone()
+                    ))),
+                )));
+            }
+        }
+        .clone();
 
-        //contract.abi;
-        // let state = match contract
-        //     .query(
-        //         "getState",
-        //         U256::from(index),
-        //         None,
-        //         Options::default(),
-        //         None,
-        //     )
-        //     .map(|_: Value| ())
-        //     .wait()
-        // {
-        //     Ok(s) => s,
-        //     Err(e) => return Box::new(futures::future::err(e).into()),
-        // };
+        trace!(
+            "Retrieving contract and abi for {} ({})",
+            concern_data.file_name,
+            concern_data.contract.address(),
+        );
+        let contract = Rc::clone(&concern_data.contract);
+        let abi = Rc::clone(&concern_data.abi);
 
         let function = match abi.function("getState".into()) {
             Ok(s) => s,
@@ -405,12 +413,11 @@ impl StateManager {
                 Ok(s) => s,
                 Err(e) => return Box::new(futures::future::err(Error::from(e))),
             };
-
+        // vector of addresses and indices should have the same length
         assert_eq!(sub_address.len(), sub_indices.len());
+        // get all sub instances in a vector
+        let mut sub_instances: Vec<Box<Instance>> = vec![];
         let sub_instance_indices = sub_address.iter().zip(sub_indices.iter());
-
-        let sub_instances = vec![];
-
         for instance in sub_instance_indices {
             println!("{:?}", instance.clone());
 
@@ -419,11 +426,13 @@ impl StateManager {
                 user_address: concern.user_address,
             };
 
-            let j =
-                &self.get_instance(c, instance.1.as_usize()).wait().unwrap();
+            sub_instances.push(Box::new(
+                self.get_instance(c, instance.1.as_usize())
+                    .wait()
+                    .unwrap()
+                    .clone(),
+            ));
         }
-
-        //println!("{:?}", sub_instances);
 
         let starting_instance = Instance {
             concern: concern,
@@ -432,6 +441,6 @@ impl StateManager {
             sub_instances: sub_instances,
         };
 
-        Box::new(futures::future::ok(vec![starting_instance]))
+        Box::new(futures::future::ok(starting_instance))
     }
 }
