@@ -48,5 +48,9 @@ error_chain! {
             description("request of state invalid")
                 display("request of state invalid: {}", details)
         }
+        InvalidContractState(details: String) {
+            description("contract state invalid")
+                display("contract state invalid: {}", details)
+        }
     }
 }
