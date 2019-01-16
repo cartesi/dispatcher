@@ -24,15 +24,35 @@ use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
 
-pub struct Dispatcher {
-    config: Configuration,
-    web3: web3::api::Web3<web3::transports::http::Http>,
-    transaction_manager: TransactionManager,
-    state_manager: StateManager,
+pub struct MachinePoint {
+    time: usize,
+    hash: ethereum_types::H256,
 }
 
-impl Dispatcher {
-    pub fn new() -> Result<Dispatcher> {
+pub struct MachineArchive {
+    id: String,
+    archive: Vec<MachinePoint>,
+}
+
+pub struct Archive {
+    machines: Vec<MachineArchive>,
+}
+
+pub trait DApp {
+    fn react(&self, state::Instance, Archive) -> String;
+}
+
+pub struct Dispatcher<T: DApp> {
+    config: Configuration,
+    web3: web3::api::Web3<web3::transports::http::Http>,
+    _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
+    transaction_manager: TransactionManager,
+    state_manager: StateManager,
+    dapp: T,
+}
+
+impl<T: DApp> Dispatcher<T> {
+    pub fn new(dapp: T) -> Result<Dispatcher<T>> {
         info!("Loading configuration file");
         let config = Configuration::new()
             .chain_err(|| format!("could not load configuration"))?;
@@ -54,36 +74,42 @@ impl Dispatcher {
             )?;
 
         info!("Creating state manager");
-        let state_manager = StateManager::new(config.clone(), web3.clone())?;
+        let state_manager = StateManager::new(config.clone())?;
 
         let dispatcher = Dispatcher {
             config: config,
             web3: web3,
+            _eloop: _eloop,
             transaction_manager: transaction_manager,
             state_manager: state_manager,
+            dapp: dapp,
         };
 
+        return Ok(dispatcher);
+    }
+
+    pub fn run(&self) -> Result<()> {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // should change this to get the list and treat each element
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        let main_concern = dispatcher.config.main_concern.clone();
+        let main_concern = (&self).config.main_concern.clone();
 
         info!("Getting instances for {:?}", main_concern);
-        let instances = dispatcher
+        let instances = &self
             .state_manager
             .get_instances(main_concern.clone())
             .wait()
             .chain_err(|| format!("could not get issues"))?;
 
         for instance in instances.iter() {
-            let i = dispatcher
+            let i = &self
                 .state_manager
                 .get_instance(main_concern, *instance)
                 .wait()?;
             //println!("{:?}", i);
         }
 
-        return Ok(dispatcher);
+        return Ok(());
 
         info!("Getting contract's abi from truffle");
         // change this to proper handling of file
@@ -135,12 +161,10 @@ impl Dispatcher {
         };
 
         info!("Sending call to instantiate");
-        dispatcher
+        &self
             .transaction_manager
             .send(req)
             .wait()
             .chain_err(|| format!("transaction manager failed to send"))?;
-
-        Ok(dispatcher)
     }
 }

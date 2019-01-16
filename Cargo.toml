@@ -1,2 +1,2 @@
 [workspace]
-members = ["dispatcher"]
+members = ["vg"]
