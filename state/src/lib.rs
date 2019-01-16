@@ -45,10 +45,10 @@ use web3::contract::tokens::Tokenize;
 
 #[derive(Clone, Debug)]
 pub struct Instance {
-    concern: Concern,
-    index: U256,
-    json_data: String,
-    sub_instances: Vec<Box<Instance>>,
+    pub concern: Concern,
+    pub index: U256,
+    pub json_data: String,
+    pub sub_instances: Vec<Box<Instance>>,
 }
 
 struct ConcernData {
@@ -426,13 +426,13 @@ impl StateManager {
                     .zip(tokens.iter())
                     .map(|(ty, to)| {
                         format!(
-                            "{{ \"name\": \"{}\", \"type\": \"{}\", \"value\": \"{}\" }},",
+                            "{{ \"name\": \"{}\", \"type\": \"{}\", \"value\": \"0x{}\" }}",
                             ty.name, ty.kind, to
                         )
                     })
                     .collect();
 
-                Ok(format!("[{}]", response.join("\n")))
+                Ok(format!("[{}]", response.join(",\n")))
             });
 
         let json_data = match state.wait() {
@@ -479,6 +479,9 @@ impl StateManager {
             concern: concern,
             index: U256::from(index),
             json_data: json_data,
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // include nonce
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             sub_instances: sub_instances,
         };
 

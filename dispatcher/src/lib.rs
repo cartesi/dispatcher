@@ -24,22 +24,31 @@ use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
 
+#[derive(Debug)]
 pub struct MachinePoint {
-    time: usize,
-    hash: ethereum_types::H256,
+    pub time: usize,
+    pub hash: ethereum_types::H256,
 }
 
+#[derive(Debug)]
 pub struct MachineArchive {
-    id: String,
-    archive: Vec<MachinePoint>,
+    pub id: String,
+    pub archive: Vec<MachinePoint>,
 }
 
+#[derive(Debug)]
 pub struct Archive {
-    machines: Vec<MachineArchive>,
+    pub machines: Vec<MachineArchive>,
+}
+
+#[derive(Debug)]
+pub enum Reaction {
+    MachineRequest(Archive),
+    Idle,
 }
 
 pub trait DApp {
-    fn react(&self, state::Instance, Archive) -> String;
+    fn react(&self, &state::Instance, &Archive) -> Result<Reaction>;
 }
 
 pub struct Dispatcher<T: DApp> {
@@ -106,6 +115,15 @@ impl<T: DApp> Dispatcher<T> {
                 .state_manager
                 .get_instance(main_concern, *instance)
                 .wait()?;
+
+            let reaction =
+                &self.dapp.react(i, &Archive { machines: vec![] })?;
+            info!(
+                "Reaction to instance {} of {} is: {:?}",
+                instance, main_concern.contract_address, reaction
+            );
+            //println!("{}", a);
+
             //println!("{:?}", i);
         }
 
