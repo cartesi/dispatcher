@@ -15,6 +15,7 @@ extern crate ethereum_types;
 extern crate futures_await as futures;
 extern crate leveldb;
 extern crate serde_json;
+extern crate utils;
 extern crate web3;
 
 use configuration::{Concern, Configuration};
@@ -32,6 +33,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
+use utils::EthWeb3;
 use web3::contract::Options;
 use web3::futures::future::Either;
 use web3::futures::stream;
@@ -63,15 +65,15 @@ struct ConcernCache {
 
 pub struct StateManager {
     config: Configuration,
-    web3: Rc<web3::Web3<web3::transports::http::Http>>,
+    web3: web3::Web3<web3::transports::http::Http>,
+    _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     concern_data: HashMap<Concern, ConcernData>,
     database: Rc<Database<Concern>>,
 }
 
 impl StateManager {
     pub fn new(
-        config: Configuration,
-        web3: web3::Web3<web3::transports::http::Http>,
+        config: Configuration //web3: web3::Web3<web3::transports::http::Http>
     ) -> Result<StateManager> {
         info!("Opening state manager database");
         let mut options = leveldb::options::Options::new();
@@ -84,6 +86,16 @@ impl StateManager {
                     "no state database (use -i if running for the first time)"
                 )
                 })?;
+
+        info!("Trying to connect to Eth node at {}", &config.url[..]);
+        let (_eloop, transport) = web3::transports::Http::new(&config.url[..])
+            .chain_err(|| {
+                format!("could not connect to Eth node at url: {}", &config.url)
+            })?;
+
+        info!("Testing Ethereum node's functionality");
+        let web3 = web3::Web3::new(transport);
+        web3.test_connection(&config).wait()?;
 
         info!("Preparing data for {} concerns", config.concerns.len());
         let mut concern_data = HashMap::new();
@@ -137,7 +149,8 @@ impl StateManager {
         Ok(StateManager {
             config: config,
             concern_data: concern_data,
-            web3: Rc::new(web3),
+            web3: web3,
+            _eloop: _eloop,
             database: Rc::new(database),
         })
     }
@@ -181,15 +194,30 @@ impl StateManager {
         );
         let mut concern_cache = match self.get_concern_cache(&concern) {
             Ok(concern) => concern,
-            Err(e) => return Box::new(futures::future::err(Error::from(e))),
+            Err(e) => {
+                return Box::new(futures::future::err(
+                    Error::from(e)
+                        .chain_err(|| "error while getting concern_cache"),
+                ));
+            }
         };
         trace!("Cached concern is {:?}", concern_cache);
+
+        let a = contract
+            .query("currentIndex", (), None, Options::default(), None)
+            .map(|index: U256| index.as_usize())
+            .map_err(|e| {
+                Error::from(e).chain_err(|| "error while getting current index")
+            })
+            .wait();
 
         trace!("Querying current index in contract {}", contract.address());
         let current_index = contract
             .query("currentIndex", (), None, Options::default(), None)
             .map(|index: U256| index.as_usize())
-            .map_err(|e| Error::from(e));
+            .map_err(|e| {
+                Error::from(e).chain_err(|| "error while getting current index")
+            });
 
         let cached_index = concern_cache.last_maximum_index;
 
@@ -215,7 +243,11 @@ impl StateManager {
                                 None,
                             )
                             .map(move |is_concerned| (index, is_concerned))
-                            .map_err(|e| Error::from(e)),
+                            .map_err(|e| {
+                                Error::from(e).chain_err(|| {
+                                    "error while querying isConcerned"
+                                })
+                            }),
                     );
                 }
                 // filter only the ones that conern us,
@@ -234,6 +266,10 @@ impl StateManager {
                                 last_maximum_index: index,
                                 list_instances: concern_cache.list_instances,
                             })
+                        })
+                        .map_err(|e| {
+                            Error::from(e)
+                                .chain_err(|| "error while filtering instances")
                         }),
                 )
             } else {
@@ -263,7 +299,9 @@ impl StateManager {
             .contract,
         );
 
-        let expanded_cache = self.get_expanded_cache(concern);
+        let expanded_cache = self
+            .get_expanded_cache(concern)
+            .map_err(|e| e.chain_err(|| "error while getting expanded cache"));
         let database = Rc::clone(&self.database);
 
         return Box::new(expanded_cache.and_then(move |cache| {
@@ -282,7 +320,10 @@ impl StateManager {
                         None,
                     )
                     .map(move |active: bool| (i, active))
-                    .map_err(|e| Error::from(e))
+                    .map_err(|e| {
+                        Error::from(e)
+                            .chain_err(|| "error while querying isActive")
+                    })
             });
             // create a stream of the above list of futures as they resolve
             stream::futures_unordered(active_futures)
