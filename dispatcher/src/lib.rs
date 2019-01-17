@@ -1,3 +1,5 @@
+pub mod dapp;
+
 extern crate configuration;
 extern crate error;
 extern crate ethereum_types;
@@ -5,11 +7,14 @@ extern crate utils;
 extern crate web3;
 
 #[macro_use]
+extern crate serde_derive;
+#[macro_use]
 extern crate log;
 extern crate env_logger;
 extern crate ethabi;
 extern crate ethcore_transaction;
 extern crate hex;
+extern crate serde;
 extern crate serde_json;
 extern crate state;
 extern crate transaction;
@@ -23,6 +28,10 @@ use state::StateManager;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
+
+pub use dapp::{
+    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
+};
 
 #[derive(Debug)]
 pub struct MachinePoint {
@@ -117,7 +126,10 @@ impl<T: DApp> Dispatcher<T> {
                 .wait()?;
 
             let reaction =
-                &self.dapp.react(i, &Archive { machines: vec![] })?;
+                &self
+                    .dapp
+                    .react(i, &Archive { machines: vec![] })
+                    .chain_err(|| format!("could not get dapp reaction"))?;
             info!(
                 "Reaction to instance {} of {} is: {:?}",
                 instance, main_concern.contract_address, reaction

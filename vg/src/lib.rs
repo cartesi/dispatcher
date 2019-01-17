@@ -11,11 +11,15 @@ extern crate log;
 extern crate dispatcher;
 extern crate ethabi;
 extern crate ethereum_types;
+extern crate hex;
 extern crate serde;
 extern crate serde_json;
 extern crate state;
 
 use configuration::{Concern, Configuration};
+use dispatcher::{
+    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
+};
 use dispatcher::{Archive, DApp, MachineArchive, MachinePoint, Reaction};
 use error::Result;
 use error::*;
@@ -34,84 +38,21 @@ impl VG {
     }
 }
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// Do proper serialization/deserialization of these types and
-// share the implementation with that of get_instance in state manager.
-// Also make sure that the FieldType match the expected one.
-// Probably need a custom Deserialize implementation, see:
-// https://github.com/serde-rs/serde/issues/760
-//
-// This implementation should also be moved an outside library to make
-// it very easy for new DApps to specify the expected struct
-//
-// We should also check if the name of the arguments match,
-// like "_challenger".
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#[derive(Serialize, Deserialize)]
-enum FieldType {
-    #[serde(rename = "address")]
-    AddressType,
-    #[serde(rename = "uint256")]
-    U256Type,
-    #[serde(rename = "uint8")]
-    U8Type,
-    #[serde(rename = "bytes32")]
-    Bytes32Type,
-}
-
-#[derive(Serialize, Deserialize)]
-struct AddressField {
-    name: String,
-    #[serde(rename = "type")]
-    ty: FieldType,
-    value: Address,
-}
-
-#[derive(Serialize, Deserialize)]
-struct U256Field {
-    name: String,
-    #[serde(rename = "type")]
-    ty: FieldType,
-    value: U256,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Bytes32Field {
-    name: String,
-    #[serde(rename = "type")]
-    ty: FieldType,
-    value: H256,
-}
-
-fn u8_from_hex<'de, D>(deserializer: D) -> std::result::Result<u8, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    // do better hex decoding than this
-    u8::from_str_radix(&s[2..], 16).map_err(D::Error::custom)
-}
-
-#[derive(Serialize, Deserialize)]
-struct U8Field {
-    name: String,
-    #[serde(rename = "type")]
-    ty: FieldType,
-    #[serde(deserialize_with = "u8_from_hex")]
-    value: u8,
-}
-
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// these two structs and the From trait below shuld be
+// obtained from a simple derive
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #[derive(Serialize, Deserialize)]
 struct ComputeCtxParsed(
-    AddressField, // challenger
-    AddressField, // claimer
-    U256Field,    // roundDuration
-    U256Field,    // timeOfLastMove
-    AddressField, // machine
-    Bytes32Field, // initialHash
-    U256Field,    // finalTime
-    Bytes32Field, // claimedFinalHash
-    U8Field,      // currentState
+    AddressField,  // challenger
+    AddressField,  // claimer
+    U256Field,     // roundDuration
+    U256Field,     // timeOfLastMove
+    AddressField,  // machine
+    Bytes32Field,  // initialHash
+    U256Field,     // finalTime
+    Bytes32Field,  // claimedFinalHash
+    String32Field, // currentState
 );
 
 #[derive(Debug)]
@@ -124,7 +65,7 @@ struct ComputeCtx {
     initial_hash: H256,
     final_time: U256,
     claimed_final_hash: H256,
-    current_state: u8,
+    current_state: String,
 }
 
 impl From<ComputeCtxParsed> for ComputeCtx {
@@ -156,14 +97,8 @@ impl DApp for VG {
         archive: &Archive,
     ) -> Result<Reaction> {
         let parsed: ComputeCtxParsed =
-            match serde_json::from_str(&instance.json_data) {
-                Ok(s) => s,
-                Err(e) => {
-                    return Err(Error::from(ErrorKind::InvalidContractState(
-                        String::from("User is neither claimer nor challenger"),
-                    )));
-                }
-            };
+            serde_json::from_str(&instance.json_data)
+                .chain_err(|| "Could not parse instance json_data")?;
         let ctx: ComputeCtx = parsed.into();
         trace!("Context for compute {:?}", ctx);
 
@@ -179,11 +114,12 @@ impl DApp for VG {
         trace!("Role played is: {:?}", role);
 
         // should not happen as it indicates an innactive instance,
-        // but could have just changed
-        match ctx.current_state {
-            // correspond respectively to:
-            // ClaimerMissedDeadline, ChallengerWon, ClaimerWon, ConsensusResult
-            2 | 4 | 5 | 6 => {
+        // but it is possible that the blockchain state changed between queries
+        match ctx.current_state.as_ref() {
+            "ClaimerMissedDeadline"
+            | "ChallengerWon"
+            | "ClaimerWon"
+            | "ConsensusResult" => {
                 return Ok(Reaction::Idle);
             }
             _ => {}
@@ -191,31 +127,26 @@ impl DApp for VG {
 
         // if not innactive
         match role {
-            Role::Claimer => match ctx.current_state {
-                // WaitingConfirmation
-                1 => {
+            Role::Claimer => match ctx.current_state.as_ref() {
+                "WaitingConfirmation" => {
                     // does not concern claimer
                     return Ok(Reaction::Idle);
                 }
-                // WaitingClaim
-                0 => {}
-                // WaitingChallenge
-                3 => {
+                "WaitingClaim" => {}
+                "WaitingChallenge" => {
                     // here goes the verification game
                 }
                 _ => unreachable!(),
             },
-            Role::Challenger => match ctx.current_state {
-                // WaitingConfirmation
-                1 => {
+            Role::Challenger => match ctx.current_state.as_ref() {
+                "WaitingConfirmation" => {
                     // here we check the result and potentialy raise challenge
                 }
-                // WaitingClaim
-                0 => {
+                "WaitingClaim" => {
                     // does not concern challenger
                     return Ok(Reaction::Idle);
                 }
-                3 => {
+                "WaitingChallenge" => {
                     // here goes the verification game
                 }
                 _ => unreachable!(),
