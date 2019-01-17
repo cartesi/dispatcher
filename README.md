@@ -1,3 +1,9 @@
+# TODOs
+
+- change this file to reflect changes in the design
+- improve error reporting by: adding more chain_err and inserting context inside the error messages
+- implement display for the structs we define and use them in logs
+
 # Infrastructure
 
 This provides the infrastructure to support the development of dApps.
