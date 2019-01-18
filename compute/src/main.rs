@@ -3,14 +3,14 @@
 
 #[macro_use]
 extern crate log;
+extern crate compute;
 extern crate dispatcher;
 extern crate env_logger;
 extern crate error;
-extern crate vg;
 
+use compute::Compute;
 use dispatcher::Dispatcher;
 use error::*;
-use vg::VG;
 
 fn print_error(e: &Error) {
     error!("error: {}", e);
@@ -31,9 +31,9 @@ fn print_error(e: &Error) {
 fn main() {
     env_logger::init();
 
-    let vg = VG::new();
+    let compute = Compute::new();
 
-    let dispatcher = match Dispatcher::new(vg) {
+    let dispatcher = match Dispatcher::new(compute) {
         Ok(d) => d,
         Err(ref e) => {
             print_error(e);

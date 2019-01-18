@@ -1,9 +1,27 @@
+use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
+use std::collections::{HashMap, HashSet};
+
+pub type Samples = HashMap<U256, H256>;
+
+pub type Archive = HashMap<String, Samples>;
+
+pub type SampleRequest = (String, HashSet<U256>);
+
+#[derive(Debug)]
+pub enum Reaction {
+    Request(SampleRequest),
+    Idle,
+}
+
+pub trait DApp<T> {
+    fn react(&self, &state::Instance, &Archive, &T) -> Result<Reaction>;
+}
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // Do proper serialization/deserialization of these types and

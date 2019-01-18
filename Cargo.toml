@@ -1,2 +1,2 @@
 [workspace]
-members = ["vg"]
+members = ["compute"]
