@@ -1,7 +1,7 @@
 [package]
 description = "Cartesi Verification Game"
 homepage = "https://cartesi.io"
-name = "vg"
+name = "compute"
 version = "0.1.0"
 authors = ["Cartesi Team"]
 

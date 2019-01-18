@@ -30,37 +30,11 @@ use utils::EthWeb3;
 use web3::futures::Future;
 
 pub use dapp::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
+    AddressField, Archive, Bytes32Field, DApp, FieldType, Reaction,
+    SampleRequest, Samples, String32Field, U256Field,
 };
 
-#[derive(Debug)]
-pub struct MachinePoint {
-    pub time: usize,
-    pub hash: ethereum_types::H256,
-}
-
-#[derive(Debug)]
-pub struct MachineArchive {
-    pub id: String,
-    pub archive: Vec<MachinePoint>,
-}
-
-#[derive(Debug)]
-pub struct Archive {
-    pub machines: Vec<MachineArchive>,
-}
-
-#[derive(Debug)]
-pub enum Reaction {
-    MachineRequest(Archive),
-    Idle,
-}
-
-pub trait DApp {
-    fn react(&self, &state::Instance, &Archive) -> Result<Reaction>;
-}
-
-pub struct Dispatcher<T: DApp> {
+pub struct Dispatcher<T: DApp<()>> {
     config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
@@ -69,7 +43,7 @@ pub struct Dispatcher<T: DApp> {
     dapp: T,
 }
 
-impl<T: DApp> Dispatcher<T> {
+impl<T: DApp<()>> Dispatcher<T> {
     pub fn new(dapp: T) -> Result<Dispatcher<T>> {
         info!("Loading configuration file");
         let config = Configuration::new()
@@ -125,11 +99,10 @@ impl<T: DApp> Dispatcher<T> {
                 .get_instance(main_concern, *instance)
                 .wait()?;
 
-            let reaction =
-                &self
-                    .dapp
-                    .react(i, &Archive { machines: vec![] })
-                    .chain_err(|| format!("could not get dapp reaction"))?;
+            let reaction = &self
+                .dapp
+                .react(i, &Archive::new(), &())
+                .chain_err(|| format!("could not get dapp reaction"))?;
             info!(
                 "Reaction to instance {} of {} is: {:?}",
                 instance, main_concern.contract_address, reaction
