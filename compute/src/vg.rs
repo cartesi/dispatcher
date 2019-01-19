@@ -15,15 +15,8 @@ use super::Role;
 
 pub struct VG();
 
-impl VG {
-    pub fn new() -> Self {
-        VG()
-    }
-}
-
 impl DApp<()> for VG {
     fn react(
-        &self,
         instance: &state::Instance,
         archive: &Archive,
         _: &(),

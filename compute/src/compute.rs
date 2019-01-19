@@ -11,16 +11,10 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
-use super::Role;
+use super::{Role, VG};
 use std::collections::{HashMap, HashSet};
 
 pub struct Compute();
-
-impl Compute {
-    pub fn new() -> Self {
-        Compute()
-    }
-}
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // these two structs and the From trait below shuld be
@@ -70,7 +64,6 @@ impl From<ComputeCtxParsed> for ComputeCtx {
 
 impl DApp<()> for Compute {
     fn react(
-        &self,
         instance: &state::Instance,
         archive: &Archive,
         _: &(),
@@ -80,18 +73,6 @@ impl DApp<()> for Compute {
                 .chain_err(|| "Could not parse instance json_data")?;
         let ctx: ComputeCtx = parsed.into();
         trace!("Context for compute {:?}", ctx);
-
-        let role = match instance.concern.user_address {
-            cl if (cl == ctx.claimer) => Role::Claimer,
-            ch if (ch == ctx.challenger) => Role::Challenger,
-            _ => {
-                return Err(Error::from(ErrorKind::InvalidContractState(
-                    String::from("User is neither claimer nor challenger"),
-                )));
-            }
-        };
-
-        trace!("Role played is: {:?}", role);
 
         // should not happen as it indicates an innactive instance,
         // but it is possible that the blockchain state changed between queries
@@ -105,30 +86,47 @@ impl DApp<()> for Compute {
             _ => {}
         };
 
-        // if not innactive
+        // reaching here this instance is active
+        let role = match instance.concern.user_address {
+            cl if (cl == ctx.claimer) => Role::Claimer,
+            ch if (ch == ctx.challenger) => Role::Challenger,
+            _ => {
+                return Err(Error::from(ErrorKind::InvalidContractState(
+                    String::from("User is neither claimer nor challenger"),
+                )));
+            }
+        };
+
+        trace!("Role played is: {:?}", role);
+
         match role {
             Role::Claimer => match ctx.current_state.as_ref() {
                 "WaitingConfirmation" => {
                     return Ok(Reaction::Idle); // does not concern claimer
                 }
                 "WaitingClaim" => {
+                    // machine id
                     let id = build_machine_id(
                         instance.index,
                         &instance.concern.contract_address,
                     );
-                    let samples = match archive.get(&id) {
-                        Some(s) => s,
-                        None => {
-                            // request new sample from machine
-                            let sample_points: HashSet<U256> =
-                                [ctx.final_time].iter().cloned().collect();
-                            return Ok(Reaction::Request((id, sample_points)));
+                    trace!("Calculating final hash of machine {}", id);
+                    // have we sampled this machine yet?
+                    if let Some(samples) = archive.get(&id) {
+                        // have we sampled the final time?
+                        if let Some(hash) = samples.get(&ctx.final_time) {
+                            // then submit the final hash
+                            return Ok(Reaction::Transaction);
                         }
                     };
-                    // here goes the calculation of the final hash
+                    // final hash has not been calculated yet, request it
+                    let sample_points: HashSet<U256> =
+                        [ctx.final_time].iter().cloned().collect();
+                    return Ok(Reaction::Request((id, sample_points)));
                 }
                 "WaitingChallenge" => {
-                    // here goes the verification game
+                    // pass control to the verification game dapp
+                    return VG::react(instance, archive, &());
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -140,12 +138,42 @@ impl DApp<()> for Compute {
                 "WaitingConfirmation" => {
                     // here goes the calculation of the final hash
                     // to check the claim and potentialy raise challenge
+                    // machine id
+                    let id = build_machine_id(
+                        instance.index,
+                        &instance.concern.contract_address,
+                    );
+                    trace!("Calculating final hash of machine {}", id);
+                    // have we sampled this machine yet?
+                    if let Some(samples) = archive.get(&id) {
+                        // have we sampled the final time?
+                        if let Some(hash) = samples.get(&ctx.final_time) {
+                            if hash == &ctx.claimed_final_hash {
+                                info!(
+                                    "Confirming final hash {} for {}",
+                                    hash, id
+                                );
+                                return Ok(Reaction::Transaction);
+                            } else {
+                                warn!(
+                                    "Disputing final hash {} != {} for {}",
+                                    hash, ctx.claimed_final_hash, id
+                                );
+                                return Ok(Reaction::Transaction);
+                            }
+                        }
+                    };
+                    // final hash has not been calculated yet, request it
+                    let sample_points: HashSet<U256> =
+                        [ctx.final_time].iter().cloned().collect();
+                    return Ok(Reaction::Request((id, sample_points)));
                 }
                 "WaitingClaim" => {
                     return Ok(Reaction::Idle); // does not concern challenger
                 }
                 "WaitingChallenge" => {
-                    // here goes the verification game
+                    // pass control to the verification game dapp
+                    return VG::react(instance, archive, &());
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -160,5 +188,5 @@ impl DApp<()> for Compute {
 }
 
 fn build_machine_id(index: U256, address: &Address) -> String {
-    return format!("{}:{}", index, address);
+    return format!("{:x}:{}", address, index);
 }
