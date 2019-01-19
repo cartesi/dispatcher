@@ -31,9 +31,7 @@ fn print_error(e: &Error) {
 fn main() {
     env_logger::init();
 
-    let compute = Compute::new();
-
-    let dispatcher = match Dispatcher::new(compute) {
+    let dispatcher = match Dispatcher::new() {
         Ok(d) => d,
         Err(ref e) => {
             print_error(e);
@@ -41,7 +39,7 @@ fn main() {
         }
     };
 
-    if let Err(ref e) = dispatcher.run() {
+    if let Err(ref e) = dispatcher.run::<Compute>() {
         print_error(e);
     }
     // let accounts = web3.eth().accounts().wait()?;

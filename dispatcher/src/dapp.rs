@@ -16,11 +16,12 @@ pub type SampleRequest = (String, HashSet<U256>);
 #[derive(Debug)]
 pub enum Reaction {
     Request(SampleRequest),
+    Transaction,
     Idle,
 }
 
 pub trait DApp<T> {
-    fn react(&self, &state::Instance, &Archive, &T) -> Result<Reaction>;
+    fn react(&state::Instance, &Archive, &T) -> Result<Reaction>;
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

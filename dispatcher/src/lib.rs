@@ -34,17 +34,16 @@ pub use dapp::{
     SampleRequest, Samples, String32Field, U256Field,
 };
 
-pub struct Dispatcher<T: DApp<()>> {
+pub struct Dispatcher {
     config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     transaction_manager: TransactionManager,
     state_manager: StateManager,
-    dapp: T,
 }
 
-impl<T: DApp<()>> Dispatcher<T> {
-    pub fn new(dapp: T) -> Result<Dispatcher<T>> {
+impl Dispatcher {
+    pub fn new() -> Result<Dispatcher> {
         info!("Loading configuration file");
         let config = Configuration::new()
             .chain_err(|| format!("could not load configuration"))?;
@@ -74,13 +73,12 @@ impl<T: DApp<()>> Dispatcher<T> {
             _eloop: _eloop,
             transaction_manager: transaction_manager,
             state_manager: state_manager,
-            dapp: dapp,
         };
 
         return Ok(dispatcher);
     }
 
-    pub fn run(&self) -> Result<()> {
+    pub fn run<T: DApp<()>>(&self) -> Result<()> {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // should change this to get the list and treat each element
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -99,17 +97,12 @@ impl<T: DApp<()>> Dispatcher<T> {
                 .get_instance(main_concern, *instance)
                 .wait()?;
 
-            let reaction = &self
-                .dapp
-                .react(i, &Archive::new(), &())
+            let reaction = T::react(i, &Archive::new(), &())
                 .chain_err(|| format!("could not get dapp reaction"))?;
             info!(
                 "Reaction to instance {} of {} is: {:?}",
                 instance, main_concern.contract_address, reaction
             );
-            //println!("{}", a);
-
-            //println!("{:?}", i);
         }
 
         return Ok(());
