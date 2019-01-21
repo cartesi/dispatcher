@@ -24,3 +24,5 @@ rlp = { version = "0.3.0", features = ["ethereum"] }
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 futures-await = "0.1"
 hex = "0.3.2"
+ethabi = "6.1.0"
+serde_json = "1.0"

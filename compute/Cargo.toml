@@ -9,6 +9,7 @@ authors = ["Cartesi Team"]
 log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
+transaction = { path = "../transaction" }
 configuration = { path = "../configuration" }
 ethereum-types = "0.4"
 ethabi = "6.1.0"
