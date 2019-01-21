@@ -8,6 +8,7 @@ extern crate error;
 extern crate structopt;
 #[macro_use]
 extern crate log;
+extern crate ethabi;
 extern crate ethcore_transaction;
 extern crate ethereum_types;
 extern crate ethjson;
@@ -16,36 +17,43 @@ extern crate futures_await as futures;
 extern crate hex;
 extern crate keccak_hash;
 extern crate rlp;
+extern crate serde_json;
 extern crate web3;
 
 use configuration::{Concern, Configuration};
 use error::*;
+use ethabi::Token;
 use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
 use ethkey::KeyPair;
 use futures::prelude::{async_block, await};
 use keccak_hash::keccak;
+use serde_json::Value;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::rc::Rc;
 use std::time;
 use web3::futures::Future;
 use web3::types::Bytes;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Strategy {
     Simplest,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TransactionRequest {
     pub concern: configuration::Concern,
     pub value: U256,
-    pub data: Vec<u8>,
+    pub function: String,
+    pub data: Vec<Token>,
     pub strategy: Strategy,
 }
 
 struct ConcernData {
     key_pair: KeyPair,
+    abi: Rc<ethabi::Contract>,
 }
 
 pub struct TransactionManager {
@@ -87,8 +95,36 @@ impl TransactionManager {
     ) -> Result<TransactionManager> {
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
+            trace!("Retrieving key for concern {}", &concern.contract_address);
             let key = recover_key(&concern)?;
-            concern_data.insert(concern, ConcernData { key_pair: key });
+
+            let abi_path = &config.abis.get(&concern).unwrap().abi;
+            trace!(
+                "Getting contract {} abi from file {:?}",
+                &concern.contract_address,
+                &abi_path
+            );
+            // change this to proper file handling (duplicate code in state)
+            let mut file = File::open(abi_path)?;
+            let mut s = String::new();
+            let truffle_abi = file.read_to_string(&mut s)?;
+            let v: Value = serde_json::from_str(&s[..])
+                .chain_err(|| format!("could not read truffle json file"))?;
+
+            // create a low level abi for contract
+            let abi = ethabi::Contract::load(
+                serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
+            )?;
+
+            // store concern data in hash table
+            trace!("Inserting concern {:?}", concern.clone());
+            concern_data.insert(
+                concern,
+                ConcernData {
+                    key_pair: key,
+                    abi: Rc::new(abi),
+                },
+            );
         }
 
         Ok(TransactionManager {
@@ -100,12 +136,12 @@ impl TransactionManager {
 
     pub fn send(
         &self,
-        input_request: TransactionRequest,
+        request: TransactionRequest,
     ) -> Box<Future<Item = (), Error = Error>> {
         // async_block needs owned values, so let us clone some stuff
         let web3 = Rc::clone(&self.web3);
-        let request = input_request.clone();
-        let key = match self.concern_data.get(&request.concern) {
+        let request = request.clone();
+        let concern_data = match self.concern_data.get(&request.concern) {
             Some(k) => k,
             None => {
                 return Box::new(async_block! {
@@ -113,9 +149,9 @@ impl TransactionManager {
                     String::from("Concern requested not found"),
                 )))});
             }
-        }
-        .key_pair
-        .clone();
+        };
+        let key = concern_data.key_pair.clone();
+        let abi = concern_data.abi.clone();
 
         Box::new(async_block! {
             let nonce = await!(web3.eth()
@@ -123,6 +159,14 @@ impl TransactionManager {
             )?;
             info!("Nonce for {} is {}", key.address(), nonce);
             let gas_price = await!(web3.eth().gas_price())?;
+
+            let raw_data = abi
+                .function((&request.function[..]).into())
+                .and_then(|function| {
+                    //function.encode_input(&Bytes(request.data).into_tokens())
+                    function.encode_input(&request.data)
+                })?;
+
             info!("Gas price estimated as {}", gas_price);
             let call_request = web3::types::CallRequest {
                 from: Some(key.address()),
@@ -130,12 +174,13 @@ impl TransactionManager {
                 gas: None,
                 gas_price: None,
                 value: Some(request.value),
-                data: Some(Bytes(request.data.clone())),
+                data: Some(Bytes(raw_data.clone())),
             };
             let gas = await!(web3.eth().estimate_gas(call_request, None))
                 .chain_err(|| format!("could not estimate gas usage"))?;
             info!("Gas usage estimated as {}", gas);
             info!("Sending transaction");
+
             let signed_tx = Transaction {
                 action: Action::Call(request.concern.contract_address),
                 nonce: nonce,
@@ -144,7 +189,7 @@ impl TransactionManager {
                 // do something better then double
                 gas: U256::from(2).checked_mul(gas).unwrap(),
                 value: request.value,
-                data: request.data,
+                data: raw_data,
             }
             .sign(&key.secret(), Some(69));
             let raw = Bytes::from(rlp::encode(&signed_tx));
@@ -156,7 +201,7 @@ impl TransactionManager {
                     web3.transport().clone(),
                     raw,
                     poll_interval,
-                    1, // change this to variable configurable from concern
+                    1, // change this to variable configurable from config
                 )
             );
             info!("Transaction sent with hash: {:?}", hash?);

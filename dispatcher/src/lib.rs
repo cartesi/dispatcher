@@ -144,15 +144,12 @@ impl Dispatcher {
             Token::Uint(U256::from(10)),
             Token::Uint(U256::from(100)),
         ];
-        let data = abi
-            .function("instantiate".into())
-            .and_then(|function| function.encode_input(&params))
-            .chain_err(|| format!("could not encode function parameters"))?;
 
         let req = TransactionRequest {
             concern: main_concern,
+            function: "instantiate".into(),
             value: U256::from(0),
-            data: data,
+            data: params,
             strategy: Strategy::Simplest,
         };
 

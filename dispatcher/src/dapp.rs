@@ -5,6 +5,7 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
+use super::transaction::TransactionRequest;
 use std::collections::{HashMap, HashSet};
 
 pub type Samples = HashMap<U256, H256>;
@@ -16,7 +17,7 @@ pub type SampleRequest = (String, HashSet<U256>);
 #[derive(Debug)]
 pub enum Reaction {
     Request(SampleRequest),
-    Transaction,
+    Transaction(TransactionRequest),
     Idle,
 }
 

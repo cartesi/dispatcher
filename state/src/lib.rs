@@ -106,7 +106,7 @@ impl StateManager {
                 &concern.contract_address,
                 &abi_path
             );
-            // change this to proper file handling
+            // change this to proper file handling (duplicate code in transact.)
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
             let truffle_abi = file.read_to_string(&mut s)?;

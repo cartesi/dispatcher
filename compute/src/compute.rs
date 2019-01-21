@@ -11,6 +11,8 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
+use super::transaction;
+use super::transaction::TransactionRequest;
 use super::{Role, VG};
 use std::collections::{HashMap, HashSet};
 
@@ -116,7 +118,17 @@ impl DApp<()> for Compute {
                         // have we sampled the final time?
                         if let Some(hash) = samples.get(&ctx.final_time) {
                             // then submit the final hash
-                            return Ok(Reaction::Transaction);
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "submitClaim".into(),
+                                data: vec![
+                                    Token::Uint(instance.index),
+                                    Token::FixedBytes(hash.0.to_vec()),
+                                ],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
                         }
                     };
                     // final hash has not been calculated yet, request it
@@ -153,13 +165,28 @@ impl DApp<()> for Compute {
                                     "Confirming final hash {} for {}",
                                     hash, id
                                 );
-                                return Ok(Reaction::Transaction);
+                                let request = TransactionRequest {
+                                    concern: instance.concern.clone(),
+                                    value: U256::from(0),
+                                    function: "confirm".into(),
+                                    data: vec![Token::Uint(instance.index)],
+                                    strategy: transaction::Strategy::Simplest,
+                                };
+                                return Ok(Reaction::Transaction(request));
                             } else {
                                 warn!(
                                     "Disputing final hash {} != {} for {}",
                                     hash, ctx.claimed_final_hash, id
                                 );
-                                return Ok(Reaction::Transaction);
+                                let request = TransactionRequest {
+                                    concern: instance.concern.clone(),
+                                    value: U256::from(0),
+                                    function: "challange".into(),
+                                    data: vec![Token::Uint(instance.index)],
+                                    strategy: transaction::Strategy::Simplest,
+                                };
+
+                                return Ok(Reaction::Transaction(request));
                             }
                         }
                     };
