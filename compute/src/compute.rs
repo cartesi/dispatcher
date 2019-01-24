@@ -122,6 +122,11 @@ impl DApp<()> for Compute {
                                 concern: instance.concern.clone(),
                                 value: U256::from(0),
                                 function: "submitClaim".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                 data: vec![
                                     Token::Uint(instance.index),
                                     Token::FixedBytes(hash.0.to_vec()),

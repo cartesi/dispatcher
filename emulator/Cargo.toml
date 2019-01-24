@@ -1,0 +1,12 @@
+[package]
+description = "Cartesi Transaction Manager"
+homepage = "https://cartesi.io"
+name = "emulator"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+log = "0.4"
+env_logger = "0.6.0"
+error = { path = "../error" }
+configuration = { path = "../configuration" }

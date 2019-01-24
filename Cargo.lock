@@ -253,6 +253,7 @@ name = "dispatcher"
 version = "0.1.0"
 dependencies = [
  "configuration 0.1.0",
+ "emulator 0.1.0",
  "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "error 0.1.0",
  "ethabi 6.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -290,6 +291,16 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "heapsize 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "emulator"
+version = "0.1.0"
+dependencies = [
+ "configuration 0.1.0",
+ "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "error 0.1.0",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

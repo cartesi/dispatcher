@@ -1,6 +1,7 @@
 pub mod dapp;
 
 extern crate configuration;
+extern crate emulator;
 extern crate error;
 extern crate ethereum_types;
 extern crate utils;
@@ -79,9 +80,6 @@ impl Dispatcher {
     }
 
     pub fn run<T: DApp<()>>(&self) -> Result<()> {
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        // should change this to get the list and treat each element
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         let main_concern = (&self).config.main_concern.clone();
 
         info!("Getting instances for {:?}", main_concern);
