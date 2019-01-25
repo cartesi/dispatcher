@@ -12,14 +12,14 @@ pub enum Backing {
 pub type Word = [u8; 8];
 
 pub struct Ram {
-    ilength: Word,
-    backing: Backing,
+    pub ilength: Word,
+    pub backing: Backing,
 }
 
 pub struct Drive {
-    istart: Word,
-    ilength: Word, // should this be the log_2 of the length?
-    backing: Backing,
+    pub istart: Word,
+    pub ilength: Word, // should this be the log_2 of the length?
+    pub backing: Backing,
 }
 
 pub enum DriveId {
@@ -35,26 +35,26 @@ pub enum DriveId {
 }
 
 pub struct MachineSpecification {
-    argument: String, // command line argument passed to kernel
-    ram: Ram,
-    flash0: Drive,
-    flash1: Drive,
-    flash2: Drive,
-    flash3: Drive,
-    flash4: Drive,
-    flash5: Drive,
-    flash6: Drive,
-    flash7: Drive,
+    pub argument: String, // command line argument passed to kernel
+    pub ram: Ram,
+    pub flash0: Drive,
+    pub flash1: Drive,
+    pub flash2: Drive,
+    pub flash3: Drive,
+    pub flash4: Drive,
+    pub flash5: Drive,
+    pub flash6: Drive,
+    pub flash7: Drive,
 }
 
 pub type Hash = String;
 
 pub struct Proof {
-    address: Word,
-    depth: u32,
-    root: Hash,
-    siblings: Vec<Hash>,
-    target: Hash,
+    pub address: Word,
+    pub depth: u32,
+    pub root: Hash,
+    pub siblings: Vec<Hash>,
+    pub target: Hash,
 }
 
 pub enum Operation {
@@ -63,37 +63,37 @@ pub enum Operation {
 }
 
 pub struct Access {
-    operation: Operation,
-    read: Word,
-    written: Word,
-    proof: Proof,
+    pub operation: Operation,
+    pub read: Word,
+    pub written: Word,
+    pub proof: Proof,
 }
 
 pub type SessionId = String;
 
 pub struct InitRequest {
-    session: SessionId,
-    machine: MachineSpecification,
+    pub session: SessionId,
+    pub machine: MachineSpecification,
 }
 
 pub struct RunRequest {
-    session: SessionId,
-    time: u64,
+    pub session: SessionId,
+    pub time: u64,
 }
 
 pub struct DriveRequest {
-    session: SessionId,
-    drive: DriveId,
+    pub session: SessionId,
+    pub drive: DriveId,
 }
 
 pub struct ReadRequest {
-    session: SessionId,
-    address: Word,
+    pub session: SessionId,
+    pub address: Word,
 }
 
 pub struct ReadResult {
-    value: Word,
-    proof: Proof,
+    pub value: Word,
+    pub proof: Proof,
 }
 
 pub type StepResult = Vec<Access>;
