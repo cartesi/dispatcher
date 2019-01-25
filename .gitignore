@@ -3,3 +3,4 @@
 key.txt
 *.pdf
 *.html
+/hasher/src/emu*

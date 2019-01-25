@@ -33,8 +33,31 @@ impl EmulatorManager {
         "Not implemented!".into()
     }
     pub fn snapshot(_: SessionId) {}
-    pub fn step(_: SessionId) -> (StepResult) {}
-    pub fn read(_: ReadRequest) -> (ReadResult) {}
-    pub fn provedrive(_: DriveRequest) -> (Proof) {}
-    pub fn getbacking(_: DriveRequest) -> (Backing) {}
+    pub fn step(_: SessionId) -> (StepResult) {
+        vec![]
+    }
+    pub fn read(_: ReadRequest) -> (ReadResult) {
+        ReadResult {
+            value: [0, 0, 0, 0, 0, 0, 0, 0],
+            proof: Proof {
+                address: [0, 0, 0, 0, 0, 0, 0, 0],
+                depth: 61,
+                root: "0x0000".to_string(),
+                siblings: vec![],
+                target: "0x0000".to_string(),
+            },
+        }
+    }
+    pub fn provedrive(_: DriveRequest) -> (Proof) {
+        Proof {
+            address: [0, 0, 0, 0, 0, 0, 0, 0],
+            depth: 61,
+            root: "0x0000".to_string(),
+            siblings: vec![],
+            target: "0x0000".to_string(),
+        }
+    }
+    pub fn getbacking(_: DriveRequest) -> (Backing) {
+        Backing::Zeros
+    }
 }

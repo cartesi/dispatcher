@@ -1,3 +1,11 @@
+# Installation
+
+COMPLETE THESE INSTRUCTIONS
+
+## Compile hasher
+
+Enter the hasher folder and enter `cargo run --bin build-hasher`.
+
 # TODOs
 
 - change this file to reflect changes in the design

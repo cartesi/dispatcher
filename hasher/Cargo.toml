@@ -1,0 +1,21 @@
+[package]
+description = "Cartesi Dispatcher"
+homepage = "https://cartesi.io"
+name = "hasher"
+version = "0.1.0"
+authors = ["Cartesi Team"]
+
+[dependencies]
+grpc            = "~0.6"
+protobuf        = "~2"
+futures         = "~0.1"
+futures-cpupool = "~0.1"
+protoc-rust-grpc = { git = "https://github.com/stepancheg/grpc-rust" }
+
+[[bin]]
+name = "build-hasher"
+path = "src/build.rs"
+
+[[bin]]
+name = "hasher"
+path = "src/main.rs"
