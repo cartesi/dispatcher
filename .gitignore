@@ -4,3 +4,4 @@ key.txt
 *.pdf
 *.html
 /hasher/src/emu*
+/emulator/src/emu*

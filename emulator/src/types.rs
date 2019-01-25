@@ -4,6 +4,7 @@ use self::configuration::Configuration;
 use super::error::*;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub enum Backing {
     Zeros,
     Path(PathBuf),
@@ -11,17 +12,20 @@ pub enum Backing {
 
 pub type Word = [u8; 8];
 
+#[derive(Debug)]
 pub struct Ram {
     pub ilength: Word,
     pub backing: Backing,
 }
 
+#[derive(Debug)]
 pub struct Drive {
     pub istart: Word,
     pub ilength: Word, // should this be the log_2 of the length?
     pub backing: Backing,
 }
 
+#[derive(Debug)]
 pub enum DriveId {
     FLASH_0,
     FLASH_1,
@@ -34,6 +38,7 @@ pub enum DriveId {
     RAM,
 }
 
+#[derive(Debug)]
 pub struct MachineSpecification {
     pub argument: String, // command line argument passed to kernel
     pub ram: Ram,
@@ -49,6 +54,7 @@ pub struct MachineSpecification {
 
 pub type Hash = String;
 
+#[derive(Debug)]
 pub struct Proof {
     pub address: Word,
     pub depth: u32,
@@ -57,11 +63,13 @@ pub struct Proof {
     pub target: Hash,
 }
 
+#[derive(Debug)]
 pub enum Operation {
     Read,
     Write,
 }
 
+#[derive(Debug)]
 pub struct Access {
     pub operation: Operation,
     pub read: Word,
@@ -71,26 +79,37 @@ pub struct Access {
 
 pub type SessionId = String;
 
+#[derive(Debug)]
 pub struct InitRequest {
     pub session: SessionId,
     pub machine: MachineSpecification,
 }
 
+#[derive(Debug)]
 pub struct RunRequest {
+    pub session: SessionId,
+    pub times: Vec<u64>,
+}
+
+#[derive(Debug)]
+pub struct StepRequest {
     pub session: SessionId,
     pub time: u64,
 }
 
+#[derive(Debug)]
 pub struct DriveRequest {
     pub session: SessionId,
     pub drive: DriveId,
 }
 
+#[derive(Debug)]
 pub struct ReadRequest {
     pub session: SessionId,
     pub address: Word,
 }
 
+#[derive(Debug)]
 pub struct ReadResult {
     pub value: Word,
     pub proof: Proof,
