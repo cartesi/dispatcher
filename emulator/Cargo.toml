@@ -10,3 +10,11 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
+httpbis = "~0.7"
+protobuf = "2"
+grpc = "~0.6"
+protoc-rust-grpc = { git = "https://github.com/stepancheg/grpc-rust" }
+
+[[bin]]
+name = "build-hasher"
+path = "src/build.rs"

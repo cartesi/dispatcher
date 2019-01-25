@@ -117,6 +117,9 @@ struct EnvCLIConfiguration {
     /// Working path
     #[structopt(long = "working_path")]
     working_path: Option<String>,
+    /// Port for emulator grpc
+    #[structopt(long = "emulator_port")]
+    emulator_port: Option<u16>,
 }
 
 /// Structure to parse configuration from file
@@ -129,6 +132,7 @@ struct FileConfiguration {
     main_concern: Option<FullConcern>,
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
+    emulator_port: Option<u16>,
 }
 
 /// Configuration after parsing
@@ -142,8 +146,12 @@ pub struct Configuration {
     pub concerns: Vec<Concern>,
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
+    pub emulator_port: u16,
 }
 
+// !!!!!!!!!!!
+// update this
+// !!!!!!!!!!!
 impl fmt::Display for Configuration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -298,6 +306,15 @@ fn combine_config(
             "Need to provide working path (config file, command line or env)",
         ))))?);
 
+    // determine emulator port (cli -> env -> config)
+    let emulator_port: u16 = cli_config
+        .emulator_port
+        .or(env_config.emulator_port)
+        .or(file_config.emulator_port)
+        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Need a port for the emulator (config file, command line or env)",
+        ))))?;
+
     info!("determine cli concern");
     let cli_main_concern = validate_concern(
         cli_config.main_concern_contract,
@@ -355,5 +372,6 @@ fn combine_config(
         concerns: concerns,
         working_path: working_path,
         abis: abis,
+        emulator_port: emulator_port,
     })
 }

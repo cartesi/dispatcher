@@ -21,6 +21,12 @@ extern crate state;
 extern crate transaction;
 
 use configuration::Configuration;
+use emulator::EmulatorManager;
+use emulator::{
+    Access, Backing, Drive, DriveId, DriveRequest, Hash, InitRequest,
+    MachineSpecification, Operation, Proof, Ram, ReadRequest, ReadResult,
+    RunRequest, SessionId, StepRequest, StepResult, Word,
+};
 pub use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
@@ -80,6 +86,25 @@ impl Dispatcher {
     }
 
     pub fn run<T: DApp<()>>(&self) -> Result<()> {
+        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+
+        let emulator = EmulatorManager::new((&self).config.clone())?;
+
+        let run_request = RunRequest {
+            session: "butterfly".to_string(),
+            times: vec![0, 1024],
+        };
+        let run_reponse = emulator.run(run_request).wait().unwrap();
+        println!("Run request: {:?}", run_reponse);
+
+        let step_request = StepRequest {
+            session: "butterfly".to_string(),
+            time: 1024,
+        };
+        println!("Step request: {:?}", emulator.step(step_request));
+
+        return Ok(());
+
         let main_concern = (&self).config.main_concern.clone();
 
         info!("Getting instances for {:?}", main_concern);
