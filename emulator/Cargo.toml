@@ -16,5 +16,5 @@ grpc = "~0.6"
 protoc-rust-grpc = { git = "https://github.com/stepancheg/grpc-rust" }
 
 [[bin]]
-name = "build-hasher"
+name = "build-emulator"
 path = "src/build.rs"

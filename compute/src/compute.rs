@@ -2,7 +2,7 @@ use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
     AddressField, Bytes32Field, FieldType, String32Field, U256Field,
 };
-use super::dispatcher::{Archive, DApp, Reaction, SampleRequest, Samples};
+use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
@@ -115,8 +115,10 @@ impl DApp<()> for Compute {
                     trace!("Calculating final hash of machine {}", id);
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
+                        // take the run samples (not the step samples)
+                        let run_samples = &samples.0;
                         // have we sampled the final time?
-                        if let Some(hash) = samples.get(&ctx.final_time) {
+                        if let Some(hash) = run_samples.get(&ctx.final_time) {
                             // then submit the final hash
                             let request = TransactionRequest {
                                 concern: instance.concern.clone(),
@@ -138,7 +140,10 @@ impl DApp<()> for Compute {
                     };
                     // final hash has not been calculated yet, request it
                     let sample_points: HashSet<U256> =
-                        [ctx.final_time].iter().cloned().collect();
+                        [U256::from(0), ctx.final_time]
+                            .iter()
+                            .cloned()
+                            .collect();
                     return Ok(Reaction::Request((id, sample_points)));
                 }
                 "WaitingChallenge" => {
@@ -163,11 +168,12 @@ impl DApp<()> for Compute {
                     trace!("Calculating final hash of machine {}", id);
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
+                        let run_samples = &samples.0;
                         // have we sampled the final time?
-                        if let Some(hash) = samples.get(&ctx.final_time) {
+                        if let Some(hash) = run_samples.get(&ctx.final_time) {
                             if hash == &ctx.claimed_final_hash {
                                 info!(
-                                    "Confirming final hash {} for {}",
+                                    "Confirming final hash {:?} for {}",
                                     hash, id
                                 );
                                 let request = TransactionRequest {
@@ -180,7 +186,7 @@ impl DApp<()> for Compute {
                                 return Ok(Reaction::Transaction(request));
                             } else {
                                 warn!(
-                                    "Disputing final hash {} != {} for {}",
+                                    "Disputing final hash {:?} != {} for {}",
                                     hash, ctx.claimed_final_hash, id
                                 );
                                 let request = TransactionRequest {
@@ -197,7 +203,10 @@ impl DApp<()> for Compute {
                     };
                     // final hash has not been calculated yet, request it
                     let sample_points: HashSet<U256> =
-                        [ctx.final_time].iter().cloned().collect();
+                        [U256::from(0), ctx.final_time]
+                            .iter()
+                            .cloned()
+                            .collect();
                     return Ok(Reaction::Request((id, sample_points)));
                 }
                 "WaitingClaim" => {

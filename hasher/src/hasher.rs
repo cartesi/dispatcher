@@ -22,10 +22,19 @@ impl Emulator for HasherEmulator {
     fn run(
         &self,
         _m: grpc::RequestOptions,
-        _: RunRequest,
-    ) -> SingleResponse<Hash> {
-        let mut r = Hash::new();
-        r.set_hash("Not implemented, but here!".into());
+        request: RunRequest,
+    ) -> SingleResponse<RunResult> {
+        let mut hash = Hash::new();
+        hash.set_hash(
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+                .into(),
+        );
+        let v: Vec<_> =
+            request.times.iter().map(move |_| hash.clone()).collect();
+        //    vec![hash.clone(), hash.clone()];
+        let repeated_field = protobuf::RepeatedField::from_vec(v);
+        let mut r = RunResult::new();
+        r.set_hashes(repeated_field);
         grpc::SingleResponse::completed(r)
     }
     fn step(

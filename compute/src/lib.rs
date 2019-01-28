@@ -24,7 +24,7 @@ use configuration::{Concern, Configuration};
 use dispatcher::{
     AddressField, Bytes32Field, FieldType, String32Field, U256Field,
 };
-use dispatcher::{Archive, DApp, Reaction, SampleRequest, Samples};
+use dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use error::Result;
 use error::*;
 use ethabi::Token;
