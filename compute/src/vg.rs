@@ -2,7 +2,7 @@ use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
     AddressField, Bytes32Field, FieldType, String32Field, U256Field,
 };
-use super::dispatcher::{Archive, DApp, Reaction, SampleRequest, Samples};
+use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;

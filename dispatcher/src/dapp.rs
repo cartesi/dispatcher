@@ -1,3 +1,4 @@
+use super::emulator::types;
 use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
@@ -8,17 +9,49 @@ use super::state::Instance;
 use super::transaction::TransactionRequest;
 use std::collections::{HashMap, HashSet};
 
-pub type Samples = HashMap<U256, H256>;
+#[derive(Debug)]
+pub struct Proof {
+    address: u64,
+    subtree: H256,
+    siblings: Vec<H256>,
+}
 
-pub type Archive = HashMap<String, Samples>;
+pub type SampleRun = HashMap<U256, H256>;
+
+pub type SampleStep = HashMap<U256, Proof>;
+
+pub type Archive = HashMap<String, (SampleRun, SampleStep)>;
 
 pub type SampleRequest = (String, HashSet<U256>);
+
+pub type StepRequest = (String, U256);
 
 #[derive(Debug)]
 pub enum Reaction {
     Request(SampleRequest),
+    Step(StepRequest),
     Transaction(TransactionRequest),
     Idle,
+}
+
+pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {
+    let mut samples = archive
+        .entry(id.clone())
+        .or_insert((SampleRun::new(), SampleStep::new()));
+    //samples.0.insert(time, hash);
+    if let Some(s) = samples.0.insert(time, hash) {
+        warn!("Machine {} at time {} recomputed", id, time);
+    }
+}
+
+pub fn add_step(archive: &mut Archive, id: String, time: U256, proof: Proof) {
+    let mut samples = archive
+        .entry(id.clone())
+        .or_insert((SampleRun::new(), SampleStep::new()));
+    //samples.0.insert(time, hash);
+    if let Some(s) = samples.1.insert(time, proof) {
+        warn!("Machine {} at time {} recomputed", id, time);
+    }
 }
 
 pub trait DApp<T> {

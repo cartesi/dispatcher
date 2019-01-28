@@ -8,7 +8,7 @@ Install `protoc`.
 
 Enter the hasher folder and enter `cargo run --bin build-hasher`.
 
-Enter the emulator folder and enter `cargo run --bin build-hasher`.
+Enter the emulator folder and enter `cargo run --bin build-emulator`.
 
 # TODOs
 
