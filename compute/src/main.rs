@@ -1,4 +1,4 @@
-q// error-chain recursion
+// error-chain recursion
 #![recursion_limit = "1024"]
 
 #[macro_use]

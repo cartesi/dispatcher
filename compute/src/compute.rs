@@ -88,7 +88,7 @@ impl DApp<()> for Compute {
             _ => {}
         };
 
-        // reaching here this instance is active
+        // if we reach this code, the instance is active
         let role = match instance.concern.user_address {
             cl if (cl == ctx.claimer) => Role::Claimer,
             ch if (ch == ctx.challenger) => Role::Challenger,

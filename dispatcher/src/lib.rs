@@ -92,93 +92,95 @@ impl Dispatcher {
 
         let main_concern = (&self).config.main_concern.clone();
 
-        info!("Getting instances for {:?}", main_concern);
-        let instances = &self
-            .state_manager
-            .get_instances(main_concern.clone())
-            .wait()
-            .chain_err(|| format!("could not get issues"))?;
-
         let mut current_archive = Archive::new();
 
-        for instance in instances.iter() {
-            let i = &self
+        for _ in 0..4 {
+            info!("Getting instances for {:?}", main_concern);
+            let instances = &self
                 .state_manager
-                .get_instance(main_concern, *instance)
-                .wait()?;
+                .get_instances(main_concern.clone())
+                .wait()
+                .chain_err(|| format!("could not get issues"))?;
 
-            let reaction = T::react(i, &current_archive, &())
-                .chain_err(|| format!("could not get dapp reaction"))?;
-            info!(
-                "Reaction to instance {} of {} is: {:?}",
-                instance, main_concern.contract_address, reaction
-            );
+            for instance in instances.iter() {
+                let i = &self
+                    .state_manager
+                    .get_instance(main_concern, *instance)
+                    .wait()?;
 
-            match reaction {
-                Reaction::Request(run_request) => {
-                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    // implement proper error and metadata
-                    // handling
-                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                let reaction = T::react(i, &current_archive, &())
+                    .chain_err(|| format!("could not get dapp reaction"))?;
+                info!(
+                    "Reaction to instance {} of {} is: {:?}",
+                    instance, main_concern.contract_address, reaction
+                );
 
-                    //let request_copy = run_request.clone();
-                    let resulting_hash = emulator
-                        .run(RunRequest {
-                            session: run_request.0.clone(),
-                            times: run_request
-                                .1
-                                .clone()
-                                .iter()
-                                .map(U256::low_u64)
-                                .collect(),
-                        })
-                        .wait()
-                        .chain_err(|| format!("could not contact emulator"))?
-                        .1;
-                    info!("Run request: {:?}", resulting_hash);
-                    let result_or_error: Result<Vec<()>> = run_request
-                        .1
-                        .clone()
-                        .into_iter()
-                        .zip(resulting_hash.hashes.clone().iter())
-                        .map(|(time, hash)| -> Result<()> {
-                            warn!(
-                                "hash.hash is {:?} and parsing is {:?}",
-                                &hash.hash[2..],
-                                serde_json::from_str::<H256>(&hash.hash[2..])
-                            );
-                            match serde_json::from_str::<H256>(&hash.hash) {
-                                Ok(sent_hash) => {
-                                    add_run(
-                                        &mut current_archive,
-                                        run_request.0.clone(),
-                                        time,
-                                        sent_hash,
-                                    );
-                                    Ok(())
+                match reaction {
+                    Reaction::Request(run_request) => {
+                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                        // implement proper error and metadata
+                        // handling
+                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                        let resulting_hash = emulator
+                            .run(RunRequest {
+                                session: run_request.0.clone(),
+                                times: run_request
+                                    .1
+                                    .clone()
+                                    .iter()
+                                    .map(U256::low_u64)
+                                    .collect(),
+                            })
+                            .wait()
+                            .chain_err(|| {
+                                format!("could not contact emulator")
+                            })?
+                            .1;
+                        info!("Run request: {:?}", resulting_hash);
+                        let result_or_error: Result<Vec<()>> = run_request
+                            .1
+                            .clone()
+                            .into_iter()
+                            .zip(resulting_hash.hashes.clone().iter())
+                            .map(|(time, hash)| -> Result<()> {
+                                match hash
+                                    .hash
+                                    .clone()
+                                    .trim_start_matches("0x")
+                                    .parse::<H256>()
+                                {
+                                    Ok(sent_hash) => {
+                                        add_run(
+                                            &mut current_archive,
+                                            run_request.0.clone(),
+                                            time,
+                                            sent_hash,
+                                        );
+                                        Ok(())
+                                    }
+                                    Err(e) => Err(e.into()),
                                 }
-                                Err(e) => Err(e.into()),
-                            }
-                        })
-                        .collect();
-                    result_or_error.chain_err(|| {
-                        format!(
-                            "could not convert to hash one of these: {:?}",
-                            resulting_hash.hashes
-                        )
-                    })?;
+                            })
+                            .collect();
+                        result_or_error.chain_err(|| {
+                            format!(
+                                "could not convert to hash one of these: {:?}",
+                                resulting_hash.hashes
+                            )
+                        })?;
+                    }
+                    Reaction::Step(step_request) => {
+                        info!(
+                            "Step request: {:?}",
+                            emulator.step(StepRequest {
+                                session: step_request.0,
+                                time: step_request.1.low_u64(),
+                            })
+                        );
+                    }
+                    Reaction::Transaction(transaction) => {}
+                    Reaction::Idle => {}
                 }
-                Reaction::Step(step_request) => {
-                    info!(
-                        "Step request: {:?}",
-                        emulator.step(StepRequest {
-                            session: step_request.0,
-                            time: step_request.1.low_u64(),
-                        })
-                    );
-                }
-                Reaction::Transaction(transaction) => {}
-                Reaction::Idle => {}
             }
         }
 
