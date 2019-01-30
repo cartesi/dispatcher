@@ -1,3 +1,4 @@
+use super::build_machine_id;
 use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
     AddressField, Bytes32Field, FieldType, String32Field, U256Field,
@@ -71,10 +72,14 @@ impl DApp<()> for Compute {
         _: &(),
     ) -> Result<Reaction> {
         let parsed: ComputeCtxParsed =
-            serde_json::from_str(&instance.json_data)
-                .chain_err(|| "Could not parse instance json_data")?;
+            serde_json::from_str(&instance.json_data).chain_err(|| {
+                format!(
+                    "Could not parse compute instance json_data: {}",
+                    &instance.json_data
+                )
+            })?;
         let ctx: ComputeCtx = parsed.into();
-        trace!("Context for compute {:?}", ctx);
+        trace!("Context for compute (index {}) {:?}", instance.index, ctx);
 
         // should not happen as it indicates an innactive instance,
         // but it is possible that the blockchain state changed between queries
@@ -98,8 +103,7 @@ impl DApp<()> for Compute {
                 )));
             }
         };
-
-        trace!("Role played is: {:?}", role);
+        trace!("Role played (index {}) is: {:?}", instance.index, role);
 
         match role {
             Role::Claimer => match ctx.current_state.as_ref() {
@@ -148,7 +152,13 @@ impl DApp<()> for Compute {
                 }
                 "WaitingChallenge" => {
                     // pass control to the verification game dapp
-                    return VG::react(instance, archive, &());
+                    let vg_instance = instance.sub_instances.get(0).ok_or(
+                        Error::from(ErrorKind::InvalidContractState(format!(
+                            "There is no vg instance {}",
+                            ctx.current_state
+                        ))),
+                    )?;
+                    return VG::react(vg_instance, archive, &());
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -214,7 +224,13 @@ impl DApp<()> for Compute {
                 }
                 "WaitingChallenge" => {
                     // pass control to the verification game dapp
-                    return VG::react(instance, archive, &());
+                    let vg_instance = instance.sub_instances.get(0).ok_or(
+                        Error::from(ErrorKind::InvalidContractState(format!(
+                            "There is no vg instance {}",
+                            ctx.current_state
+                        ))),
+                    )?;
+                    return VG::react(vg_instance, archive, &());
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -226,8 +242,4 @@ impl DApp<()> for Compute {
 
         return Ok(Reaction::Idle);
     }
-}
-
-fn build_machine_id(index: U256, address: &Address) -> String {
-    return format!("{:x}:{}", address, index);
 }

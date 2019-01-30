@@ -152,20 +152,25 @@ impl TransactionManager {
         };
         let key = concern_data.key_pair.clone();
         let abi = concern_data.abi.clone();
+        let confirmations: usize = (&self).config.confirmations;
 
         Box::new(async_block! {
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)
-            )?;
+            ).chain_err(|| "could not retrieve nonce")?;
             info!("Nonce for {} is {}", key.address(), nonce);
-            let gas_price = await!(web3.eth().gas_price())?;
+            let gas_price = await!(web3.eth().gas_price())
+                .chain_err(|| "could not retrieve gas price")?;
 
             let raw_data = abi
                 .function((&request.function[..]).into())
                 .and_then(|function| {
-                    //function.encode_input(&Bytes(request.data).into_tokens())
                     function.encode_input(&request.data)
-                })?;
+                }).chain_err(|| format!(
+                    "could not encode data {:?} to function {}:",
+                    &request.data,
+                    &request.function
+                ))?;
 
             info!("Gas price estimated as {}", gas_price);
             let call_request = web3::types::CallRequest {
@@ -179,8 +184,7 @@ impl TransactionManager {
             let gas = await!(web3.eth().estimate_gas(call_request, None))
                 .chain_err(|| format!("could not estimate gas usage"))?;
             info!("Gas usage estimated as {}", gas);
-            info!("Sending transaction");
-
+            info!("Signing transaction");
             let signed_tx = Transaction {
                 action: Action::Call(request.concern.contract_address),
                 nonce: nonce,
@@ -192,16 +196,16 @@ impl TransactionManager {
                 data: raw_data,
             }
             .sign(&key.secret(), Some(69));
+            info!("Sending transaction");
             let raw = Bytes::from(rlp::encode(&signed_tx));
             //let hash = await!(web3.eth().send_raw_transaction(raw));
-
             let poll_interval = time::Duration::from_secs(1);
             let hash = await!(
                 web3::confirm::send_raw_transaction_with_confirmation(
                     web3.transport().clone(),
                     raw,
                     poll_interval,
-                    1, // change this to variable configurable from config
+                    confirmations,
                 )
             );
             info!("Transaction sent with hash: {:?}", hash?);

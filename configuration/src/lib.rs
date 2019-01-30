@@ -120,6 +120,9 @@ struct EnvCLIConfiguration {
     /// Port for emulator grpc
     #[structopt(long = "emulator_port")]
     emulator_port: Option<u16>,
+    /// Number of confirmations for transaction
+    #[structopt(long = "confirmations")]
+    confirmations: Option<usize>,
 }
 
 /// Structure to parse configuration from file
@@ -133,6 +136,7 @@ struct FileConfiguration {
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
     emulator_port: Option<u16>,
+    confirmations: Option<usize>,
 }
 
 /// Configuration after parsing
@@ -147,6 +151,7 @@ pub struct Configuration {
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
     pub emulator_port: u16,
+    pub confirmations: usize,
 }
 
 // !!!!!!!!!!!
@@ -315,6 +320,15 @@ fn combine_config(
             "Need a port for the emulator (config file, command line or env)",
         ))))?;
 
+    // determine number of confirmations (cli -> env -> config)
+    let confirmations: usize = cli_config
+        .confirmations
+        .or(env_config.confirmations)
+        .or(file_config.confirmations)
+        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Need a number of confirmations (config file, command line or env)",
+        ))))?;
+
     info!("determine cli concern");
     let cli_main_concern = validate_concern(
         cli_config.main_concern_contract,
@@ -373,5 +387,6 @@ fn combine_config(
         working_path: working_path,
         abis: abis,
         emulator_port: emulator_port,
+        confirmations: confirmations,
     })
 }
