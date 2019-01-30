@@ -78,6 +78,14 @@ pub enum FieldType {
     U8Type,
     #[serde(rename = "bytes32")]
     Bytes32Type,
+    #[serde(rename = "uint256[5]")]
+    U256Array5Type,
+    #[serde(rename = "uint256[]")]
+    U256ArrayType,
+    #[serde(rename = "bool[]")]
+    BoolArrayType,
+    #[serde(rename = "bytes32[]")]
+    Bytes32ArrayType,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -97,11 +105,43 @@ pub struct U256Field {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct U256Array {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: Vec<U256>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct U256Array5 {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: [U256; 5],
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Bytes32Field {
     pub name: String,
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: H256,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Bytes32Array {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: Vec<H256>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BoolArray {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: Vec<bool>,
 }
 
 fn string_from_hex<'de, D>(

@@ -1,6 +1,6 @@
 use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
+    AddressField, Bytes32Field, FieldType, String32Field, U256Array5, U256Field,
 };
 use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
@@ -11,7 +11,7 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
-use super::Role;
+use super::{Partition, Role};
 
 pub struct VG();
 
@@ -29,7 +29,7 @@ struct VGCtxParsed(
     Bytes32Field,  // hashBeforeDivergence
     Bytes32Field,  // hashAfterDivergence
     String32Field, // currentState
-    [U256Field; 5], // uint values: roundDuration
+    U256Array5,    // uint values: roundDuration
                    //              finalTime
                    //              timeOfLastMove
                    //              mmInstance
@@ -64,11 +64,11 @@ impl From<VGCtxParsed> for VGCtx {
             hash_before_divergence: parsed.5.value,
             hash_after_divergence: parsed.6.value,
             current_state: parsed.7.value,
-            round_duration: parsed.8[0].value,
-            final_time: parsed.8[1].value,
-            time_of_last_move: parsed.8[2].value,
-            mm_instance: parsed.8[3].value,
-            partition_instance: parsed.8[4].value,
+            round_duration: parsed.8.value[0],
+            final_time: parsed.8.value[1],
+            time_of_last_move: parsed.8.value[2],
+            mm_instance: parsed.8.value[3],
+            partition_instance: parsed.8.value[4],
         }
     }
 }
@@ -79,7 +79,69 @@ impl DApp<()> for VG {
         archive: &Archive,
         _: &(),
     ) -> Result<Reaction> {
-        warn!("Instance {} reached vg", instance.index);
+        let parsed: VGCtxParsed = serde_json::from_str(&instance.json_data)
+            .chain_err(|| {
+                format!(
+                    "Could not parse vg instance json_data: {}",
+                    &instance.json_data
+                )
+            })?;
+        let ctx: VGCtx = parsed.into();
+        trace!("Context for vg (index {}) {:?}", instance.index, ctx);
+
+        // should not happen as it indicates an innactive instance,
+        // but it is possible that the blockchain state changed between queries
+        match ctx.current_state.as_ref() {
+            "FinishedClaimerWon" | "FinishedChallengerWon" => {
+                return Ok(Reaction::Idle);
+            }
+            _ => {}
+        };
+
+        // if we reach this code, the instance is active
+        let role = match instance.concern.user_address {
+            cl if (cl == ctx.claimer) => Role::Claimer,
+            ch if (ch == ctx.challenger) => Role::Challenger,
+            _ => {
+                return Err(Error::from(ErrorKind::InvalidContractState(
+                    String::from("User is neither claimer nor challenger"),
+                )));
+            }
+        };
+        trace!("Role played (index {}) is: {:?}", instance.index, role);
+
+        match role {
+            Role::Claimer => match ctx.current_state.as_ref() {
+                "WaitPartition" => {
+                    // pass control to the partition dapp
+                    let partition_instance =
+                        instance.sub_instances.get(0).ok_or(Error::from(
+                            ErrorKind::InvalidContractState(format!(
+                                "There is no partition instance {}",
+                                ctx.current_state
+                            )),
+                        ))?;
+                    return Partition::react(partition_instance, archive, &());
+                }
+                "WaitMemoryProveValues" => {
+                    return Ok(Reaction::Idle); // does not concern claimer
+                }
+                _ => {
+                    return Err(Error::from(ErrorKind::InvalidContractState(
+                        format!("Unknown current state {}", ctx.current_state),
+                    )));
+                }
+            },
+            Role::Challenger => match ctx.current_state.as_ref() {
+                "WaitPartition" => unimplemented!("s(3rjskdjfj)"),
+                "WaitMemoryProveValues" => unimplemented!("w9sdf982"),
+                _ => {
+                    return Err(Error::from(ErrorKind::InvalidContractState(
+                        format!("Unknown current state {}", ctx.current_state),
+                    )));
+                }
+            },
+        }
         return Ok(Reaction::Idle);
     }
 }

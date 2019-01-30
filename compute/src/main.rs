@@ -44,6 +44,6 @@ fn main() {
     }
     // let accounts = web3.eth().accounts().wait()?;
     // println!("Account: {:?}", accounts[0]);
-    // let block_number = web3.eth().block_number().wait()?.low_u64();
+    // let block_number = web3.eth().block_number().wait()?.as_u64();
     // println!("Block number: {:?}", block_number);
 }

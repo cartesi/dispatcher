@@ -37,8 +37,9 @@ use utils::EthWeb3;
 use web3::futures::Future;
 
 pub use dapp::{
-    add_run, add_step, AddressField, Archive, Bytes32Field, DApp, FieldType,
-    Reaction, SampleRequest, String32Field, U256Field,
+    add_run, add_step, AddressField, Archive, BoolArray, Bytes32Array,
+    Bytes32Field, DApp, FieldType, Reaction, SampleRequest, String32Field,
+    U256Array, U256Array5, U256Field,
 };
 
 pub struct Dispatcher {
@@ -103,6 +104,12 @@ impl Dispatcher {
                 .chain_err(|| format!("could not get issues"))?;
 
             for instance in instances.iter() {
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                // temporary for testing purposes
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                if *instance != 13 as usize {
+                    //continue;
+                }
                 let i = &self
                     .state_manager
                     .get_instance(main_concern, *instance)
@@ -128,7 +135,7 @@ impl Dispatcher {
                                     .1
                                     .clone()
                                     .iter()
-                                    .map(U256::low_u64)
+                                    .map(U256::as_u64)
                                     .collect(),
                             })
                             .wait()
@@ -136,7 +143,10 @@ impl Dispatcher {
                                 format!("could not contact emulator")
                             })?
                             .1;
-                        info!("Run request: {:?}", resulting_hash);
+                        info!(
+                            "Run machine, request {:?}, answer: {:?}",
+                            run_request, resulting_hash
+                        );
                         let result_or_error: Result<Vec<()>> = run_request
                             .1
                             .clone()
@@ -174,11 +184,23 @@ impl Dispatcher {
                             "Step request: {:?}",
                             emulator.step(StepRequest {
                                 session: step_request.0,
-                                time: step_request.1.low_u64(),
+                                time: step_request.1.as_u64(),
                             })
                         );
                     }
-                    Reaction::Transaction(transaction) => {}
+                    Reaction::Transaction(transaction_request) => {
+                        info!(
+                            "Send transaction (concern {:?}, index {}): {:?}",
+                            main_concern, instance, transaction_request
+                        );
+                        &self
+                            .transaction_manager
+                            .send(transaction_request)
+                            .wait()
+                            .chain_err(|| {
+                                format!("transaction manager failed to send")
+                            })?;
+                    }
                     Reaction::Idle => {}
                 }
             }

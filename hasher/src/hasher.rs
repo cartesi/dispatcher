@@ -26,7 +26,7 @@ impl Emulator for HasherEmulator {
     ) -> SingleResponse<RunResult> {
         let mut hash = Hash::new();
         hash.set_hash(
-            "0x0000000000000000000000000000000000000000000000000000000000000000"
+            "0x8888888888888888888888888888888888888888888888888888888888888888"
                 .into(),
         );
         let v: Vec<_> =

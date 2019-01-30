@@ -1,6 +1,7 @@
 #![feature(proc_macro_hygiene, generators, transpose_result)]
 
 pub mod compute;
+pub mod partition;
 pub mod vg;
 
 extern crate configuration;
@@ -35,10 +36,15 @@ use serde_json::Value;
 use state::Instance;
 
 pub use compute::Compute;
+pub use partition::Partition;
 pub use vg::VG;
 
 #[derive(Debug)]
 enum Role {
     Claimer,
     Challenger,
+}
+
+pub fn build_machine_id(index: U256, address: &Address) -> String {
+    return format!("{:x}:{}", address, index);
 }

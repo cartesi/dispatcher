@@ -20,7 +20,7 @@ extern crate web3;
 
 use configuration::{Concern, Configuration};
 use error::*;
-use ethabi::Token;
+use ethabi::{Param, Token};
 use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
 use futures::prelude::{async_block, await};
@@ -418,18 +418,10 @@ impl StateManager {
 
                 assert_eq!(types.len(), tokens.len());
 
-                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                // replace this by proper serialization
-                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 let response: Vec<String> = types
                     .iter()
                     .zip(tokens.iter())
-                    .map(|(ty, to)| {
-                        format!(
-                            "{{ \"name\": \"{}\", \"type\": \"{}\", \"value\": \"0x{}\" }}",
-                            ty.name, ty.kind, to
-                        )
-                    })
+                    .map(serialize_param)
                     .collect();
 
                 Ok(format!("[{}]", response.join(",\n")))
@@ -486,5 +478,50 @@ impl StateManager {
         };
 
         Box::new(futures::future::ok(starting_instance))
+    }
+}
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// replace this by proper serialization
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+fn serialize_param(input: (&Param, &Token)) -> String {
+    let (ty, to) = input;
+    let serialized = serialize_token(to);
+    format!(
+        "{{ \"name\": \"{}\", \"type\": \"{}\", \"value\": {} }}",
+        ty.name, ty.kind, serialized
+    )
+}
+
+fn serialize_token(to: &Token) -> String {
+    match to {
+        ethabi::Token::Address(a) => format!("\"{:?}\"", a),
+        ethabi::Token::FixedBytes(f) => {
+            format!("\"0x{}\"", Token::FixedBytes(f.to_vec()))
+        }
+        ethabi::Token::Bytes(b) => {
+            format!("\"0x{}\"", Token::Bytes(b.to_vec()))
+        }
+        ethabi::Token::Int(_) => unimplemented!("Int"),
+        ethabi::Token::Uint(u) => format!("\"0x{:x}\"", u),
+        ethabi::Token::Bool(b) => format!("{}", b),
+        ethabi::Token::String(_) => unimplemented!("String"),
+        ethabi::Token::FixedArray(f) => {
+            let temp = f
+                .into_iter()
+                .map(|token| serialize_token(token))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("[{}]", temp) // go
+        }
+        ethabi::Token::Array(f) => {
+            let temp = f
+                .into_iter()
+                .map(|token| serialize_token(token))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("[{}]", temp) // go
+        }
     }
 }

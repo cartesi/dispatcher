@@ -33,7 +33,7 @@ impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
         let block_time: i64 = block
             .ok_or(str_error("Latest block not found"))?
             .timestamp
-            .low_u64() as i64;
+            .as_u64() as i64;
         let current_time: i64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_e| str_error("Time went backwards"))?
