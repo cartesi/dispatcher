@@ -120,7 +120,7 @@ impl DApp<()> for Partition {
                         instance.index,
                         &instance.concern.contract_address,
                     );
-                    trace!("Calculating final hash of machine {}", id);
+                    trace!("Calculating queried hashes of machine {}", id);
                     let mut hashes = Vec::new();
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
@@ -200,7 +200,92 @@ impl DApp<()> for Partition {
                 }
             },
             Role::Challenger => match ctx.current_state.as_ref() {
-                "WaitingQuery" => unimplemented!("9asdlkfjlk"),
+                "WaitingQuery" => {
+                    // machine id
+                    let id = build_machine_id(
+                        instance.index,
+                        &instance.concern.contract_address,
+                    );
+                    trace!("Calculating posted hashes of machine {}", id);
+                    // have we sampled this machine yet?
+                    if let Some(samples) = archive.get(&id) {
+                        // take the run samples (not the step samples)
+                        let run_samples = &samples.0;
+                        for i in 0..(ctx.query_size.as_usize() - 1) {
+                            // get the i'th time in query array
+                            let time =
+                                ctx.query_array.get(i).ok_or(Error::from(
+                                    ErrorKind::InvalidContractState(format!(
+                                    "could not find element {} in query array",
+                                    i
+                                )),
+                                ))?;
+                            let next_time = ctx.query_array.get(i + 1).ok_or(
+                                Error::from(ErrorKind::InvalidContractState(
+                                    format!(
+                                    "could not find element {} in query array",
+                                    i
+                                ),
+                                )),
+                            )?;
+                            // get the i'th hash in hash array
+                            let claimed_hash =
+                                &ctx.hash_array.get(i).ok_or(Error::from(
+                                    ErrorKind::InvalidContractState(format!(
+                                    "could not find element {} in hash array",
+                                    i
+                                )),
+                                ))?;
+                            // have we sampled that specific time?
+                            let hash = match run_samples.get(time) {
+                                Some(hash) => hash,
+                                None => {
+                                    // some hash not calculated yet, request all
+                                    let sample_points: HashSet<U256> = ctx
+                                        .query_array
+                                        .clone()
+                                        .into_iter()
+                                        .collect();
+                                    return Ok(Reaction::Request((
+                                        id,
+                                        sample_points,
+                                    )));
+                                }
+                            };
+
+                            if hash != *claimed_hash {
+                                // submit the relevant query
+                                let request = TransactionRequest {
+                                    concern: instance.concern.clone(),
+                                    value: U256::from(0),
+                                    function: "makeQuery".into(),
+                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    // improve these types by letting the
+                                    // dapp submit ethereum_types and convert
+                                    // them inside the transaction manager
+                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    data: vec![
+                                        Token::Uint(instance.index),
+                                        Token::Uint(U256::from(i - 1)),
+                                        Token::Uint(*time),
+                                        Token::Uint(*next_time),
+                                    ],
+                                    strategy: transaction::Strategy::Simplest,
+                                };
+                                return Ok(Reaction::Transaction(request));
+                            }
+                        }
+                        // no disagreement found. important bug!!!!
+                        error!(
+                            "bug found, no disagreement in dispute {:?}!!!",
+                            instance
+                        );
+                    }
+                    // machine not queried yet (power outage?), request all
+                    let sample_points: HashSet<U256> =
+                        ctx.query_array.clone().into_iter().collect();
+                    return Ok(Reaction::Request((id, sample_points)));
+                }
                 "WaitingHashes" => {
                     return Ok(Reaction::Idle); // does not concern challenger
                 }

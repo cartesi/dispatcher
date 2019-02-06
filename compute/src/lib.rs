@@ -19,6 +19,7 @@ extern crate hex;
 extern crate serde;
 extern crate serde_json;
 extern crate state;
+extern crate time;
 extern crate transaction;
 
 use configuration::{Concern, Configuration};

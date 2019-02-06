@@ -87,8 +87,6 @@ impl Dispatcher {
     }
 
     pub fn run<T: DApp<()>>(&self) -> Result<()> {
-        println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-
         let emulator = EmulatorManager::new((&self).config.clone())?;
 
         let main_concern = (&self).config.main_concern.clone();
@@ -96,7 +94,7 @@ impl Dispatcher {
         let mut current_archive = Archive::new();
 
         for _ in 0..4 {
-            info!("Getting instances for {:?}", main_concern);
+            trace!("Getting instances for {:?}", main_concern);
             let instances = &self
                 .state_manager
                 .get_instances(main_concern.clone())
@@ -117,9 +115,11 @@ impl Dispatcher {
 
                 let reaction = T::react(i, &current_archive, &())
                     .chain_err(|| format!("could not get dapp reaction"))?;
-                info!(
+                trace!(
                     "Reaction to instance {} of {} is: {:?}",
-                    instance, main_concern.contract_address, reaction
+                    instance,
+                    main_concern.contract_address,
+                    reaction
                 );
 
                 match reaction {

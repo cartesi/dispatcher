@@ -17,6 +17,9 @@ use super::transaction::TransactionRequest;
 use super::{Role, VG};
 use std::collections::{HashMap, HashSet};
 
+use std::time::{SystemTime, UNIX_EPOCH};
+use time::Duration;
+
 pub struct Compute();
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -108,7 +111,11 @@ impl DApp<()> for Compute {
         match role {
             Role::Claimer => match ctx.current_state.as_ref() {
                 "WaitingConfirmation" => {
-                    return Ok(Reaction::Idle); // does not concern claimer
+                    return win_by_deadline_or_idle(
+                        &instance.concern,
+                        instance.index,
+                        &ctx,
+                    );
                 }
                 "WaitingClaim" => {
                     // machine id
@@ -220,7 +227,11 @@ impl DApp<()> for Compute {
                     return Ok(Reaction::Request((id, sample_points)));
                 }
                 "WaitingClaim" => {
-                    return Ok(Reaction::Idle); // does not concern challenger
+                    return win_by_deadline_or_idle(
+                        &instance.concern,
+                        instance.index,
+                        &ctx,
+                    );
                 }
                 "WaitingChallenge" => {
                     // pass control to the verification game dapp
@@ -240,6 +251,35 @@ impl DApp<()> for Compute {
             },
         }
 
+        return Ok(Reaction::Idle);
+    }
+}
+
+fn win_by_deadline_or_idle(
+    concern: &Concern,
+    index: U256,
+    ctx: &ComputeCtx,
+) -> Result<Reaction> {
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .chain_err(|| "System time before UNIX_EPOCH")?
+        .as_secs();
+
+    // if other party missed the deadline
+    if (current_time
+        > ctx.time_of_last_move.as_u64() + ctx.round_duration.as_u64())
+    {
+        error!("AAA");
+        let request = TransactionRequest {
+            concern: concern.clone(),
+            value: U256::from(0),
+            function: "claimVictoryByTime".into(),
+            data: vec![Token::Uint(index)],
+            strategy: transaction::Strategy::Simplest,
+        };
+        return Ok(Reaction::Transaction(request));
+    } else {
+        // if not, then wait
         return Ok(Reaction::Idle);
     }
 }

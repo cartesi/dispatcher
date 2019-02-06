@@ -169,6 +169,7 @@ dependencies = [
  "serde_derive 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "state 0.1.0",
+ "time 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "transaction 0.1.0",
 ]
 
@@ -618,6 +619,7 @@ name = "hasher"
 version = "0.1.0"
 dependencies = [
  "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ethereum-types 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-cpupool 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "grpc 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
