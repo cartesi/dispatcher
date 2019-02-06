@@ -14,6 +14,7 @@ use emu::*;
 use emu_grpc::*;
 use grpc::SingleResponse;
 use hasher::HasherEmulator;
+use std::env;
 use std::thread;
 
 fn main() {
@@ -22,7 +23,9 @@ fn main() {
     let port = 50051;
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
-    server.add_service(EmulatorServer::new_service_def(HasherEmulator));
+    let fake: bool = env::args().count() > 1;
+    let hasher_emulator = HasherEmulator::new(fake);
+    server.add_service(EmulatorServer::new_service_def(hasher_emulator));
     server.http.set_cpu_pool_threads(1);
     let _server = server.build().expect("server");
     info!("greeter server started on port {}", port);
