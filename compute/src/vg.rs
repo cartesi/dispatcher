@@ -133,7 +133,17 @@ impl DApp<()> for VG {
                 }
             },
             Role::Challenger => match ctx.current_state.as_ref() {
-                "WaitPartition" => unimplemented!("s(3rjskdjfj)"),
+                "WaitPartition" => {
+                    // pass control to the partition dapp
+                    let partition_instance =
+                        instance.sub_instances.get(0).ok_or(Error::from(
+                            ErrorKind::InvalidContractState(format!(
+                                "There is no partition instance {}",
+                                ctx.current_state
+                            )),
+                        ))?;
+                    return Partition::react(partition_instance, archive, &());
+                }
                 "WaitMemoryProveValues" => unimplemented!("w9sdf982"),
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(

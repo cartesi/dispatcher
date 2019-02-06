@@ -452,8 +452,6 @@ impl StateManager {
         let mut sub_instances: Vec<Box<Instance>> = vec![];
         let sub_instance_indices = sub_address.iter().zip(sub_indices.iter());
         for instance in sub_instance_indices {
-            println!("{:?}", instance.clone());
-
             let c = Concern {
                 contract_address: *instance.0,
                 user_address: concern.user_address,
