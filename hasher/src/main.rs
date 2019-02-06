@@ -20,15 +20,29 @@ use std::thread;
 fn main() {
     env_logger::init();
 
-    let port = 50051;
+    let mut arguments = std::env::args();
+    let port: u16 = arguments
+        .nth(1)
+        .expect("no port given")
+        .parse()
+        .expect("could not parse port");
+    let fake: bool = arguments
+        .next()
+        .unwrap_or("false".to_string())
+        .parse()
+        .expect("could not parse fakeness");
+    let g: bool = "false".to_string().parse().unwrap();
+    //let port = 50051;
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
-    let fake: bool = env::args().count() > 1;
     let hasher_emulator = HasherEmulator::new(fake);
     server.add_service(EmulatorServer::new_service_def(hasher_emulator));
     server.http.set_cpu_pool_threads(1);
     let _server = server.build().expect("server");
-    info!("greeter server started on port {}", port);
+    info!(
+        "Greeter server started on port {} and fakeness is {}",
+        port, fake
+    );
 
     loop {
         thread::park();
