@@ -14,22 +14,31 @@ pub struct HasherEmulator {
 }
 
 fn calculate_hasher_vector(
-    hash: String,
+    input_hash: String,
     times: Vec<u64>,
     fake: bool,
 ) -> Vec<Hash> {
+    let hash: String = input_hash.chars().take_while(|&s| s != ':').collect();
     return times
         .into_iter()
         .map(|time| {
             let mut returned_hash = Hash::new();
             let u: u64;
             if fake {
-                u = U256::from(hash.as_bytes()).low_u64()
+                u = hash
+                    .parse::<U256>()
+                    .expect("could not parse u256")
+                    .low_u64()
                     + std::cmp::max(time, 17);
             } else {
-                u = U256::from(hash.as_bytes()).low_u64() + time;
+                u = hash
+                    .parse::<U256>()
+                    .expect("could not parse u256")
+                    .low_u64()
+                    + time;
             }
-            returned_hash.set_hash(u.to_string().into());
+            returned_hash
+                .set_hash(format!("{:x}", H256::from(U256::from(u))).into());
             returned_hash.clone()
         })
         .collect();
@@ -64,6 +73,7 @@ impl Emulator for HasherEmulator {
         // let v: Vec<_> =
         //     request.times.iter().map(move |_| hash.clone()).collect();
         //    vec![hash.clone(), hash.clone()];
+        info!("Session returned {:?}", v);
         let repeated_field = protobuf::RepeatedField::from_vec(v);
         let mut r = RunResult::new();
         r.set_hashes(repeated_field);
