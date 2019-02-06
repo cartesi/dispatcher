@@ -23,7 +23,7 @@ fn main() {
     let mut arguments = std::env::args();
     let port: u16 = arguments
         .nth(1)
-        .expect("no port given")
+        .unwrap_or("50051".to_string())
         .parse()
         .expect("could not parse port");
     let fake: bool = arguments
@@ -31,7 +31,6 @@ fn main() {
         .unwrap_or("false".to_string())
         .parse()
         .expect("could not parse fakeness");
-    let g: bool = "false".to_string().parse().unwrap();
     //let port = 50051;
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
