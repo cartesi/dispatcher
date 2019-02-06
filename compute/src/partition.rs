@@ -266,7 +266,7 @@ impl DApp<()> for Partition {
                                     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                     data: vec![
                                         Token::Uint(instance.index),
-                                        Token::Uint(U256::from(i - 1)),
+                                        Token::Uint(U256::from(i)),
                                         Token::Uint(*time),
                                         Token::Uint(*next_time),
                                     ],

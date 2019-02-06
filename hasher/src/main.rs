@@ -31,7 +31,6 @@ fn main() {
         .unwrap_or("false".to_string())
         .parse()
         .expect("could not parse fakeness");
-    //let port = 50051;
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
     let hasher_emulator = HasherEmulator::new(fake);
