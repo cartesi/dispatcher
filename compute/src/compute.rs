@@ -209,7 +209,7 @@ impl DApp<()> for Compute {
                                 let request = TransactionRequest {
                                     concern: instance.concern.clone(),
                                     value: U256::from(0),
-                                    function: "challange".into(),
+                                    function: "challenge".into(),
                                     data: vec![Token::Uint(instance.index)],
                                     strategy: transaction::Strategy::Simplest,
                                 };
