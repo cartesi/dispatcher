@@ -52,6 +52,8 @@ pub struct Dispatcher {
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     transaction_manager: Arc<Mutex<TransactionManager>>,
     state_manager: Arc<Mutex<StateManager>>,
+    emulator: Arc<Mutex<EmulatorManager>>,
+    current_archive: Arc<Mutex<Archive>>,
 }
 
 impl Dispatcher {
@@ -79,12 +81,20 @@ impl Dispatcher {
         info!("Creating state manager");
         let state_manager = StateManager::new(config.clone())?;
 
+        info!("Creating emulator client");
+        let emulator = EmulatorManager::new(config.clone())?;
+
+        info!("Creating archive");
+        let mut current_archive = Archive::new();
+
         let dispatcher = Dispatcher {
             config: config,
             web3: web3,
             _eloop: _eloop,
             transaction_manager: Arc::new(Mutex::new(transaction_manager)),
             state_manager: Arc::new(Mutex::new(state_manager)),
+            emulator: Arc::new(Mutex::new(emulator)),
+            current_archive: Arc::new(Mutex::new(current_archive)),
         };
 
         return Ok(dispatcher);
@@ -92,13 +102,6 @@ impl Dispatcher {
 
     pub fn run<T: DApp<()>>(&self) -> Result<()> {
         let main_concern = (&self).config.main_concern.clone();
-
-        let emulator =
-            Arc::new(Mutex::new(EmulatorManager::new((&self).config.clone())?));
-        let mut current_archive = Arc::new(Mutex::new(Archive::new()));
-        //        let transaction_manager =
-        //            Arc::new(Mutex::new(&self.transaction_manager));
-        //        let state_manager = Arc::new(Mutex::new(&self.state_manager));
 
         trace!("Getting instances for {:?}", main_concern);
 
@@ -111,9 +114,8 @@ impl Dispatcher {
                 .get_instances(main_concern.clone())
                 .wait()
                 .chain_err(|| format!("could not get issues"))?;
-            //                .clone()
-            //              .into();
         }
+
         let mut thread_handles = vec![];
 
         for instance in instances.into_iter() {
@@ -126,25 +128,24 @@ impl Dispatcher {
 
             //            let (tx, rx) = mpsc::channel();
 
-            let current_archive_clone = current_archive.clone();
-            let emulator_clone = emulator.clone();
             let transaction_manager_clone = (&self).transaction_manager.clone();
             let state_manager_clone = (&self).state_manager.clone();
+            let emulator_clone = (&self).emulator.clone();
+            let current_archive_clone = (&self).current_archive.clone();
 
             let mut executer = move || {
-                let mut current_archive_lock =
-                    current_archive_clone.lock().unwrap();
-                let emulator_lock = emulator_clone.lock().unwrap();
-                let transaction_manager_lock =
-                    transaction_manager_clone.lock().unwrap();
-                let state_manager_lock = state_manager_clone.lock().unwrap();
+                let t_m_lock = transaction_manager_clone.lock().unwrap();
+                let s_m_lock = state_manager_clone.lock().unwrap();
+                let e_lock = emulator_clone.lock().unwrap();
+                let mut c_a_lock = current_archive_clone.lock().unwrap();
+
                 execute_reaction::<T>(
                     main_concern,
                     &instance,
-                    &emulator_lock,
-                    &state_manager_lock,
-                    &transaction_manager_lock,
-                    &mut current_archive_lock,
+                    &t_m_lock,
+                    &s_m_lock,
+                    &e_lock,
+                    &mut c_a_lock,
                 );
             };
 
@@ -161,9 +162,9 @@ impl Dispatcher {
 fn execute_reaction<T: DApp<()>>(
     main_concern: Concern,
     instance: &usize,
-    emulator: &EmulatorManager,
-    state_manager: &StateManager,
     transaction_manager: &TransactionManager,
+    state_manager: &StateManager,
+    emulator: &EmulatorManager,
     current_archive: &mut Archive,
 ) -> Result<()> {
     let i = state_manager.get_instance(main_concern, *instance).wait()?;
