@@ -32,7 +32,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::rc::Rc;
+use std::sync::Arc;
 use utils::EthWeb3;
 use web3::contract::Options;
 use web3::futures::future::Either;
@@ -52,8 +52,8 @@ pub struct Instance {
 }
 
 struct ConcernData {
-    contract: Rc<web3::contract::Contract<web3::transports::http::Http>>,
-    abi: Rc<ethabi::Contract>,
+    contract: Arc<web3::contract::Contract<web3::transports::http::Http>>,
+    abi: Arc<ethabi::Contract>,
     file_name: String,
 }
 
@@ -68,7 +68,7 @@ pub struct StateManager {
     web3: web3::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     concern_data: HashMap<Concern, ConcernData>,
-    database: Rc<Database<Concern>>,
+    database: Arc<Database<Concern>>,
 }
 
 impl StateManager {
@@ -131,8 +131,8 @@ impl StateManager {
             concern_data.insert(
                 concern.clone(),
                 ConcernData {
-                    contract: Rc::new(contract),
-                    abi: Rc::new(abi),
+                    contract: Arc::new(contract),
+                    abi: Arc::new(abi),
                     file_name: String::from(
                         abi_path
                             .clone()
@@ -151,13 +151,13 @@ impl StateManager {
             concern_data: concern_data,
             web3: web3,
             _eloop: _eloop,
-            database: Rc::new(database),
+            database: Arc::new(database),
         })
     }
 
     /// Gets the information about a given concern as it was stored in db
     fn get_concern_cache(&self, ref concern: &Concern) -> Result<ConcernCache> {
-        let database = Rc::clone(&self.database);
+        let database = Arc::clone(&self.database);
         trace!("Reading cached database for concern {:?}", concern);
         let read_opts = ReadOptions::new();
         Ok(database
@@ -179,8 +179,8 @@ impl StateManager {
     fn get_expanded_cache(
         &self,
         concern: Concern,
-    ) -> Box<Future<Item = Rc<ConcernCache>, Error = Error>> {
-        let contract = Rc::clone(
+    ) -> Box<Future<Item = Arc<ConcernCache>, Error = Error>> {
+        let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
                 None => {
@@ -262,7 +262,7 @@ impl StateManager {
                             list_concerns.sort();
                             list_concerns.dedup();
                             concern_cache.list_instances.extend(list_concerns);
-                            Rc::new(ConcernCache {
+                            Arc::new(ConcernCache {
                                 last_maximum_index: index,
                                 list_instances: concern_cache.list_instances,
                             })
@@ -273,7 +273,7 @@ impl StateManager {
                         }),
                 )
             } else {
-                Either::B(futures::future::ok(Rc::new(ConcernCache {
+                Either::B(futures::future::ok(Arc::new(ConcernCache {
                     last_maximum_index: index,
                     list_instances: concern_cache.list_instances,
                 })))
@@ -286,7 +286,7 @@ impl StateManager {
         &self,
         concern: Concern,
     ) -> Box<Future<Item = Vec<usize>, Error = Error>> {
-        let contract = Rc::clone(
+        let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
                 None => {
@@ -302,7 +302,7 @@ impl StateManager {
         let expanded_cache = self
             .get_expanded_cache(concern)
             .map_err(|e| e.chain_err(|| "error while getting expanded cache"));
-        let database = Rc::clone(&self.database);
+        let database = Arc::clone(&self.database);
 
         return Box::new(expanded_cache.and_then(move |cache| {
             let cache_list = cache.list_instances.clone();
@@ -384,8 +384,8 @@ impl StateManager {
             concern_data.file_name,
             concern_data.contract.address(),
         );
-        let contract = Rc::clone(&concern_data.contract);
-        let abi = Rc::clone(&concern_data.abi);
+        let contract = Arc::clone(&concern_data.contract);
+        let abi = Arc::clone(&concern_data.abi);
 
         let function = match abi.function("getState".into()) {
             Ok(s) => s,

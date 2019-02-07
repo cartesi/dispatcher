@@ -32,7 +32,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time;
 use web3::futures::Future;
 use web3::types::Bytes;
@@ -53,13 +53,13 @@ pub struct TransactionRequest {
 
 struct ConcernData {
     key_pair: KeyPair,
-    abi: Rc<ethabi::Contract>,
+    abi: Arc<ethabi::Contract>,
 }
 
 pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
-    web3: Rc<web3::Web3<web3::transports::Http>>,
+    web3: Arc<web3::Web3<web3::transports::Http>>,
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -122,7 +122,7 @@ impl TransactionManager {
                 concern,
                 ConcernData {
                     key_pair: key,
-                    abi: Rc::new(abi),
+                    abi: Arc::new(abi),
                 },
             );
         }
@@ -130,7 +130,7 @@ impl TransactionManager {
         Ok(TransactionManager {
             config: config,
             concern_data: concern_data,
-            web3: Rc::new(web3),
+            web3: Arc::new(web3),
         })
     }
 
@@ -139,7 +139,7 @@ impl TransactionManager {
         request: TransactionRequest,
     ) -> Box<Future<Item = (), Error = Error>> {
         // async_block needs owned values, so let us clone some stuff
-        let web3 = Rc::clone(&self.web3);
+        let web3 = Arc::clone(&self.web3);
         let request = request.clone();
         let concern_data = match self.concern_data.get(&request.concern) {
             Some(k) => k,

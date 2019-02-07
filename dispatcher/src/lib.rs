@@ -20,7 +20,7 @@ extern crate serde_json;
 extern crate state;
 extern crate transaction;
 
-use configuration::Configuration;
+use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
 use emulator::{
     Access, Backing, Drive, DriveId, DriveRequest, Hash, InitRequest,
@@ -36,9 +36,13 @@ use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::EthWeb3;
 use web3::futures::Future;
 
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread;
+
 pub use dapp::{
-    add_run, add_step, AddressField, Archive, BoolArray, Bytes32Array,
-    Bytes32Field, DApp, FieldType, Reaction, SampleRequest, String32Field,
+    AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
+    FieldType, Reaction, SampleRequest, SampleRun, SampleStep, String32Field,
     U256Array, U256Array5, U256Field,
 };
 
@@ -46,8 +50,8 @@ pub struct Dispatcher {
     config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
-    transaction_manager: TransactionManager,
-    state_manager: StateManager,
+    transaction_manager: Arc<Mutex<TransactionManager>>,
+    state_manager: Arc<Mutex<StateManager>>,
 }
 
 impl Dispatcher {
@@ -79,186 +83,201 @@ impl Dispatcher {
             config: config,
             web3: web3,
             _eloop: _eloop,
-            transaction_manager: transaction_manager,
-            state_manager: state_manager,
+            transaction_manager: Arc::new(Mutex::new(transaction_manager)),
+            state_manager: Arc::new(Mutex::new(state_manager)),
         };
 
         return Ok(dispatcher);
     }
 
     pub fn run<T: DApp<()>>(&self) -> Result<()> {
-        let emulator = EmulatorManager::new((&self).config.clone())?;
-
         let main_concern = (&self).config.main_concern.clone();
 
-        let mut current_archive = Archive::new();
+        let emulator =
+            Arc::new(Mutex::new(EmulatorManager::new((&self).config.clone())?));
+        let mut current_archive = Arc::new(Mutex::new(Archive::new()));
+        //        let transaction_manager =
+        //            Arc::new(Mutex::new(&self.transaction_manager));
+        //        let state_manager = Arc::new(Mutex::new(&self.state_manager));
 
-        for _ in 0..4 {
-            trace!("Getting instances for {:?}", main_concern);
-            let instances = &self
-                .state_manager
+        trace!("Getting instances for {:?}", main_concern);
+
+        let instances: Vec<usize>;
+        {
+            let s = &self.state_manager.clone();
+            instances = s
+                .lock()
+                .unwrap()
                 .get_instances(main_concern.clone())
                 .wait()
                 .chain_err(|| format!("could not get issues"))?;
+            //                .clone()
+            //              .into();
+        }
+        let mut thread_handles = vec![];
 
-            for instance in instances.iter() {
-                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                // temporary for testing purposes
-                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                if *instance != 13 as usize {
-                    //continue;
-                }
-                let i = &self
-                    .state_manager
-                    .get_instance(main_concern, *instance)
-                    .wait()?;
+        for instance in instances.into_iter() {
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // temporary for testing purposes
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // if *instance != 13 as usize {
+            //     continue;
+            // }
 
-                let reaction = T::react(i, &current_archive, &())
-                    .chain_err(|| format!("could not get dapp reaction"))?;
-                trace!(
-                    "Reaction to instance {} of {} is: {:?}",
-                    instance,
-                    main_concern.contract_address,
-                    reaction
+            //            let (tx, rx) = mpsc::channel();
+
+            let current_archive_clone = current_archive.clone();
+            let emulator_clone = emulator.clone();
+            let transaction_manager_clone = (&self).transaction_manager.clone();
+            let state_manager_clone = (&self).state_manager.clone();
+
+            let mut executer = move || {
+                let mut current_archive_lock =
+                    current_archive_clone.lock().unwrap();
+                let emulator_lock = emulator_clone.lock().unwrap();
+                let transaction_manager_lock =
+                    transaction_manager_clone.lock().unwrap();
+                let state_manager_lock = state_manager_clone.lock().unwrap();
+                execute_reaction::<T>(
+                    main_concern,
+                    &instance,
+                    &emulator_lock,
+                    &state_manager_lock,
+                    &transaction_manager_lock,
+                    &mut current_archive_lock,
                 );
+            };
 
-                match reaction {
-                    Reaction::Request(run_request) => {
-                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                        // implement proper error and metadata
-                        // handling
-                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                        let resulting_hash = emulator
-                            .run(RunRequest {
-                                session: run_request.0.clone(),
-                                times: run_request
-                                    .1
-                                    .clone()
-                                    .iter()
-                                    .map(U256::as_u64)
-                                    .collect(),
-                            })
-                            .wait()
-                            .chain_err(|| {
-                                format!("could not contact emulator")
-                            })?
-                            .1;
-                        info!(
-                            "Run machine, request {:?}, answer: {:?}",
-                            run_request, resulting_hash
-                        );
-                        let result_or_error: Result<Vec<()>> = run_request
-                            .1
-                            .clone()
-                            .into_iter()
-                            .zip(resulting_hash.hashes.clone().iter())
-                            .map(|(time, hash)| -> Result<()> {
-                                match hash
-                                    .hash
-                                    .clone()
-                                    .trim_start_matches("0x")
-                                    .parse::<H256>()
-                                {
-                                    Ok(sent_hash) => {
-                                        add_run(
-                                            &mut current_archive,
-                                            run_request.0.clone(),
-                                            time,
-                                            sent_hash,
-                                        );
-                                        Ok(())
-                                    }
-                                    Err(e) => Err(e.into()),
-                                }
-                            })
-                            .collect();
-                        result_or_error.chain_err(|| {
-                            format!(
-                                "could not convert to hash one of these: {:?}",
-                                resulting_hash.hashes
-                            )
-                        })?;
-                    }
-                    Reaction::Step(step_request) => {
-                        info!(
-                            "Step request: {:?}",
-                            emulator.step(StepRequest {
-                                session: step_request.0,
-                                time: step_request.1.as_u64(),
-                            })
-                        );
-                    }
-                    Reaction::Transaction(transaction_request) => {
-                        info!(
-                            "Send transaction (concern {:?}, index {}): {:?}",
-                            main_concern, instance, transaction_request
-                        );
-                        &self
-                            .transaction_manager
-                            .send(transaction_request)
-                            .wait()
-                            .chain_err(|| {
-                                format!("transaction manager failed to send")
-                            })?;
-                    }
-                    Reaction::Idle => {}
-                }
-            }
+            thread_handles.push(thread::spawn(executer));
         }
 
+        for t in thread_handles {
+            t.join().unwrap();
+        }
         return Ok(());
+    }
+}
 
-        info!("Getting contract's abi from truffle");
-        // change this to proper handling of file
-        let truffle_dump = include_str!(
-            "/home/augusto/contracts/build/contracts/PartitionInstantiator.json"
-        );
-        let v: Value = serde_json::from_str(truffle_dump)
-            .chain_err(|| format!("could not read truffle json file"))?;
+fn execute_reaction<T: DApp<()>>(
+    main_concern: Concern,
+    instance: &usize,
+    emulator: &EmulatorManager,
+    state_manager: &StateManager,
+    transaction_manager: &TransactionManager,
+    current_archive: &mut Archive,
+) -> Result<()> {
+    let i = state_manager.get_instance(main_concern, *instance).wait()?;
 
-        // failed attempt to check contract's code.
-        // Should use the data submitted during transaction creation instead
-        // use binary_search or binary_search_by provided by Vec
-        //
-        // info!("Getting contract's code from node");
-        // let code = dispatcher
-        //     .web3
-        //     .eth()
-        //     .code(main_concern.contract_address, None)
-        //     .wait()?;
-        // let bytecode = hex::decode(
-        //     String::from(v["bytecode"].as_str().unwrap())
-        //         .trim_start_matches("0x"),
-        // ).unwrap();
+    let reaction = T::react(&i, current_archive, &())
+        .chain_err(|| format!("could not get dapp reaction"))?;
+    trace!(
+        "Reaction to instance {} of {} is: {:?}",
+        instance,
+        main_concern.contract_address,
+        reaction
+    );
 
-        info!("Encoding function call through abi");
-        let abi = ethabi::Contract::load(
-            serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
-        )
-        .chain_err(|| format!("could decode json abi"))?;
-        let params = vec![
-            Token::Address(main_concern.user_address),
-            Token::Address(main_concern.contract_address),
-            Token::FixedBytes(vec![b'X'; 32]),
-            Token::FixedBytes(vec![b'U'; 32]),
-            Token::Uint(U256::from(122 as u64)),
-            Token::Uint(U256::from(10)),
-            Token::Uint(U256::from(100)),
-        ];
+    match reaction {
+        Reaction::Request(run_request) => {
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // implement proper error and metadata
+            // handling
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            let resulting_hash = emulator
+                .run(RunRequest {
+                    session: run_request.0.clone(),
+                    times: run_request
+                        .1
+                        .clone()
+                        .iter()
+                        .map(U256::as_u64)
+                        .collect(),
+                })
+                .wait()
+                .chain_err(|| format!("could not contact emulator"))?
+                .1;
+            info!(
+                "Run machine, request {:?}, answer: {:?}",
+                run_request, resulting_hash
+            );
+            let result_or_error: Result<Vec<()>> = run_request
+                .1
+                .clone()
+                .into_iter()
+                .zip(resulting_hash.hashes.clone().iter())
+                .map(|(time, hash)| -> Result<()> {
+                    match hash
+                        .hash
+                        .clone()
+                        .trim_start_matches("0x")
+                        .parse::<H256>()
+                    {
+                        Ok(sent_hash) => {
+                            add_run(
+                                current_archive,
+                                run_request.0.clone(),
+                                time,
+                                sent_hash,
+                            );
+                            Ok(())
+                        }
+                        Err(e) => Err(e.into()),
+                    }
+                })
+                .collect();
+            result_or_error.chain_err(|| {
+                format!(
+                    "could not convert to hash one of these: {:?}",
+                    resulting_hash.hashes
+                )
+            })?;
+        }
+        Reaction::Step(step_request) => {
+            info!(
+                "Step request: {:?}",
+                emulator.step(StepRequest {
+                    session: step_request.0,
+                    time: step_request.1.as_u64(),
+                })
+            );
+        }
+        Reaction::Transaction(transaction_request) => {
+            info!(
+                "Send transaction (concern {:?}, index {}): {:?}",
+                main_concern, instance, transaction_request
+            );
 
-        let req = TransactionRequest {
-            concern: main_concern,
-            function: "instantiate".into(),
-            value: U256::from(0),
-            data: params,
-            strategy: Strategy::Simplest,
-        };
+            transaction_manager
+                .send(transaction_request)
+                .wait()
+                .chain_err(|| format!("transaction manager failed to send"))?;
+        }
+        Reaction::Idle => {}
+    };
+    Ok(())
+}
 
-        info!("Sending call to instantiate");
-        &self
-            .transaction_manager
-            .send(req)
-            .wait()
-            .chain_err(|| format!("transaction manager failed to send"))?;
+pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {
+    let mut samples = archive
+        .entry(id.clone())
+        .or_insert((SampleRun::new(), SampleStep::new()));
+    //samples.0.insert(time, hash);
+    if let Some(s) = samples.0.insert(time, hash) {
+        warn!("Machine {} at time {} recomputed", id, time);
+    }
+}
+
+pub fn add_step(
+    archive: &mut Archive,
+    id: String,
+    time: U256,
+    proof: dapp::Proof,
+) {
+    let mut samples = archive
+        .entry(id.clone())
+        .or_insert((SampleRun::new(), SampleStep::new()));
+    //samples.0.insert(time, hash);
+    if let Some(s) = samples.1.insert(time, proof) {
+        warn!("Machine {} at time {} recomputed", id, time);
     }
 }
