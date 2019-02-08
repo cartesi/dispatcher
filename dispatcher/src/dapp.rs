@@ -21,11 +21,24 @@ pub type SampleRun = HashMap<U256, H256>;
 
 pub type SampleStep = HashMap<U256, Proof>;
 
-pub type Archive = HashMap<String, (SampleRun, SampleStep)>;
+pub struct SamplePair {
+    pub run: SampleRun,
+    pub step: SampleStep,
+}
 
-pub type SampleRequest = (String, HashSet<U256>);
+pub type Archive = HashMap<String, SamplePair>;
 
-pub type StepRequest = (String, U256);
+#[derive(Debug)]
+pub struct SampleRequest {
+    pub id: String,
+    pub times: HashSet<U256>,
+}
+
+#[derive(Debug)]
+pub struct StepRequest {
+    pub id: String,
+    pub time: U256,
+}
 
 #[derive(Debug)]
 pub enum Reaction {

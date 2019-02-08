@@ -281,8 +281,8 @@ impl StateManager {
         }));
     }
 
-    /// Get all instances, by querying cache, blockchain and then filtering
-    pub fn get_instances(
+    /// Get relevant indices, by querying cache, blockchain and then filtering
+    pub fn get_indices(
         &self,
         concern: Concern,
     ) -> Box<Future<Item = Vec<usize>, Error = Error>> {

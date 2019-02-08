@@ -127,7 +127,7 @@ impl DApp<()> for Compute {
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
                         // take the run samples (not the step samples)
-                        let run_samples = &samples.0;
+                        let run_samples = &samples.run;
                         // have we sampled the final time?
                         if let Some(hash) = run_samples.get(&ctx.final_time) {
                             // then submit the final hash
@@ -155,7 +155,10 @@ impl DApp<()> for Compute {
                             .iter()
                             .cloned()
                             .collect();
-                    return Ok(Reaction::Request((id, sample_points)));
+                    return Ok(Reaction::Request(SampleRequest {
+                        id: id,
+                        times: sample_points,
+                    }));
                 }
                 "WaitingChallenge" => {
                     // pass control to the verification game dapp
@@ -185,7 +188,7 @@ impl DApp<()> for Compute {
                     trace!("Calculating final hash of machine {}", id);
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
-                        let run_samples = &samples.0;
+                        let run_samples = &samples.run;
                         // have we sampled the final time?
                         if let Some(hash) = run_samples.get(&ctx.final_time) {
                             if hash == &ctx.claimed_final_hash {
@@ -224,7 +227,10 @@ impl DApp<()> for Compute {
                             .iter()
                             .cloned()
                             .collect();
-                    return Ok(Reaction::Request((id, sample_points)));
+                    return Ok(Reaction::Request(SampleRequest {
+                        id: id,
+                        times: sample_points,
+                    }));
                 }
                 "WaitingClaim" => {
                     return win_by_deadline_or_idle(
