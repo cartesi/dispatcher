@@ -125,7 +125,7 @@ impl DApp<()> for Partition {
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
                         // take the run samples (not the step samples)
-                        let run_samples = &samples.0;
+                        let run_samples = &samples.run;
                         for i in 0..ctx.query_size.as_usize() {
                             // get the i'th time in query array
                             let time = &ctx.query_array.get(i).ok_or(
@@ -145,10 +145,12 @@ impl DApp<()> for Partition {
                                         .clone()
                                         .into_iter()
                                         .collect();
-                                    return Ok(Reaction::Request((
-                                        id,
-                                        sample_points,
-                                    )));
+                                    return Ok(Reaction::Request(
+                                        SampleRequest {
+                                            id: id,
+                                            times: sample_points,
+                                        },
+                                    ));
                                 }
                             }
                         }
@@ -191,7 +193,10 @@ impl DApp<()> for Partition {
                     // machine not queried yet (power outage?), request all
                     let sample_points: HashSet<U256> =
                         ctx.query_array.clone().into_iter().collect();
-                    return Ok(Reaction::Request((id, sample_points)));
+                    return Ok(Reaction::Request(SampleRequest {
+                        id: id,
+                        times: sample_points,
+                    }));
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -210,7 +215,7 @@ impl DApp<()> for Partition {
                     // have we sampled this machine yet?
                     if let Some(samples) = archive.get(&id) {
                         // take the run samples (not the step samples)
-                        let run_samples = &samples.0;
+                        let run_samples = &samples.run;
                         for i in 0..(ctx.query_size.as_usize() - 1) {
                             // get the i'th time in query array
                             let time =
@@ -246,10 +251,12 @@ impl DApp<()> for Partition {
                                         .clone()
                                         .into_iter()
                                         .collect();
-                                    return Ok(Reaction::Request((
-                                        id,
-                                        sample_points,
-                                    )));
+                                    return Ok(Reaction::Request(
+                                        SampleRequest {
+                                            id: id,
+                                            times: sample_points,
+                                        },
+                                    ));
                                 }
                             };
 
@@ -284,7 +291,10 @@ impl DApp<()> for Partition {
                     // machine not queried yet (power outage?), request all
                     let sample_points: HashSet<U256> =
                         ctx.query_array.clone().into_iter().collect();
-                    return Ok(Reaction::Request((id, sample_points)));
+                    return Ok(Reaction::Request(SampleRequest {
+                        id: id,
+                        times: sample_points,
+                    }));
                 }
                 "WaitingHashes" => {
                     return Ok(Reaction::Idle); // does not concern challenger

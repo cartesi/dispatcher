@@ -6,6 +6,7 @@ extern crate error_chain;
 extern crate envy;
 extern crate ethabi;
 extern crate ethkey;
+extern crate grpc;
 extern crate rustc_hex;
 extern crate serde_yaml;
 extern crate time;
@@ -25,6 +26,7 @@ error_chain! {
         Web3Contract(web3::contract::Error);
         LevelDB(leveldb::error::Error);
         Utf8(std::str::Utf8Error);
+        Grpc(grpc::Error);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
@@ -51,6 +53,10 @@ error_chain! {
         InvalidContractState(details: String) {
             description("contract state invalid")
                 display("contract state invalid: {}", details)
+        }
+        GrpcError(details: String) {
+            description("error received from grpc")
+                display("error received from grpc: {}", details)
         }
     }
 }

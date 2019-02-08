@@ -1,3 +1,5 @@
+#![feature(proc_macro_hygiene, generators)]
+
 pub mod dapp;
 
 extern crate configuration;
@@ -42,8 +44,8 @@ use std::thread;
 
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
-    FieldType, Reaction, SampleRequest, SampleRun, SampleStep, String32Field,
-    U256Array, U256Array5, U256Field,
+    FieldType, Reaction, SamplePair, SampleRequest, SampleRun, SampleStep,
+    String32Field, U256Array, U256Array5, U256Field,
 };
 
 pub struct Dispatcher {
@@ -105,20 +107,20 @@ impl Dispatcher {
 
         trace!("Getting instances for {:?}", main_concern);
 
-        let instances: Vec<usize>;
+        let indices: Vec<usize>;
         {
             let s = &self.state_manager.clone();
-            instances = s
+            indices = s
                 .lock()
                 .unwrap()
-                .get_instances(main_concern.clone())
+                .get_indices(main_concern.clone())
                 .wait()
                 .chain_err(|| format!("could not get issues"))?;
         }
 
         let mut thread_handles = vec![];
 
-        for instance in instances.into_iter() {
+        for index in indices.into_iter() {
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // temporary for testing purposes
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -133,20 +135,16 @@ impl Dispatcher {
             let emulator_clone = (&self).emulator.clone();
             let current_archive_clone = (&self).current_archive.clone();
 
-            let mut executer = move || {
-                let t_m_lock = transaction_manager_clone.lock().unwrap();
-                let s_m_lock = state_manager_clone.lock().unwrap();
-                let e_lock = emulator_clone.lock().unwrap();
-                let mut c_a_lock = current_archive_clone.lock().unwrap();
-
+            let mut executer = move || -> Result<()> {
                 execute_reaction::<T>(
                     main_concern,
-                    &instance,
-                    &t_m_lock,
-                    &s_m_lock,
-                    &e_lock,
-                    &mut c_a_lock,
-                );
+                    index,
+                    transaction_manager_clone,
+                    state_manager_clone,
+                    emulator_clone,
+                    current_archive_clone,
+                )
+                .wait()
             };
 
             thread_handles.push(thread::spawn(executer));
@@ -161,48 +159,112 @@ impl Dispatcher {
 
 fn execute_reaction<T: DApp<()>>(
     main_concern: Concern,
-    instance: &usize,
-    transaction_manager: &TransactionManager,
-    state_manager: &StateManager,
-    emulator: &EmulatorManager,
-    current_archive: &mut Archive,
-) -> Result<()> {
-    let i = state_manager.get_instance(main_concern, *instance).wait()?;
+    index: usize,
+    transaction_manager_arc: Arc<Mutex<TransactionManager>>,
+    state_manager_arc: Arc<Mutex<StateManager>>,
+    emulator_arc: Arc<Mutex<EmulatorManager>>,
+    current_archive_arc: Arc<Mutex<Archive>>,
+) -> Box<Future<Item = (), Error = Error>> {
+    let state_manager_clone = state_manager_arc.clone();
+    let state_manager_lock = state_manager_clone.lock().unwrap();
 
-    let reaction = T::react(&i, current_archive, &())
-        .chain_err(|| format!("could not get dapp reaction"))?;
-    trace!(
-        "Reaction to instance {} of {} is: {:?}",
-        instance,
-        main_concern.contract_address,
-        reaction
+    return Box::new(
+        state_manager_lock
+            .get_instance(main_concern, index)
+            .and_then(
+                move |instance| -> Box<Future<Item = (), Error = Error>> {
+                    let transaction_manager =
+                        transaction_manager_arc.lock().unwrap();
+                    let state_manager = state_manager_arc.lock().unwrap();
+                    let emulator = emulator_arc.lock().unwrap();
+                    let mut current_archive =
+                        current_archive_arc.lock().unwrap();
+
+                    let reaction =
+                        match T::react(&instance, &current_archive, &())
+                            .chain_err(|| {
+                                format!("could not get dapp reaction")
+                            }) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                return Box::new(web3::futures::future::err(e));
+                            }
+                        };
+                    trace!(
+                        "Reaction to instance {} of {} is: {:?}",
+                        index,
+                        main_concern.contract_address,
+                        reaction
+                    );
+
+                    match reaction {
+                        Reaction::Request(run_request) => {
+                            let current_archive_clone =
+                                current_archive_arc.clone();
+                            process_run_request(
+                                main_concern,
+                                index,
+                                run_request,
+                                &emulator,
+                                current_archive_clone,
+                            )
+                        }
+                        Reaction::Step(step_request) => process_step_request(
+                            main_concern,
+                            index,
+                            step_request,
+                            &emulator,
+                            &mut current_archive,
+                        ),
+                        Reaction::Transaction(transaction_request) => {
+                            process_transaction_request(
+                                main_concern,
+                                index,
+                                transaction_request,
+                                &transaction_manager,
+                            )
+                        }
+                        Reaction::Idle => {
+                            Box::new(web3::futures::future::ok::<(), _>(()))
+                        }
+                    }
+                },
+            ),
     );
+}
 
-    match reaction {
-        Reaction::Request(run_request) => {
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+fn process_run_request(
+    main_concern: Concern,
+    index: usize,
+    run_request: SampleRequest,
+    emulator: &EmulatorManager,
+    current_archive_arc: Arc<Mutex<Archive>>,
+) -> Box<Future<Item = (), Error = Error>> {
+    return Box::new(emulator
+        .run(RunRequest {
+            session: run_request.id.clone(),
+            times: run_request.times.clone().iter().map(U256::as_u64).collect(),
+        })
+        .0
+        .map_err(|e| {
+            Error::from(ErrorKind::GrpcError(format!(
+                "could not run emulator: {}",
+                e
+            )))
+        })
+        .then(move |grpc_result| {
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // implement proper error and metadata
             // handling
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            let resulting_hash = emulator
-                .run(RunRequest {
-                    session: run_request.0.clone(),
-                    times: run_request
-                        .1
-                        .clone()
-                        .iter()
-                        .map(U256::as_u64)
-                        .collect(),
-                })
-                .wait()
-                .chain_err(|| format!("could not contact emulator"))?
-                .1;
+            // but what on earth is going on with grpc?
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            let resulting_hash = grpc_result.unwrap().1.wait().unwrap().0;
             info!(
-                "Run machine, request {:?}, answer: {:?}",
-                run_request, resulting_hash
+                "Run machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
+                main_concern, index, run_request, resulting_hash
             );
-            let result_or_error: Result<Vec<()>> = run_request
-                .1
+            let store_result_in_archive: Result<Vec<()>> = run_request
+                .times
                 .clone()
                 .into_iter()
                 .zip(resulting_hash.hashes.clone().iter())
@@ -214,9 +276,11 @@ fn execute_reaction<T: DApp<()>>(
                         .parse::<H256>()
                     {
                         Ok(sent_hash) => {
+                            let mut current_archive =
+                                current_archive_arc.lock().unwrap();
                             add_run(
-                                current_archive,
-                                run_request.0.clone(),
+                                &mut current_archive,
+                                run_request.id.clone(),
                                 time,
                                 sent_hash,
                             );
@@ -226,44 +290,62 @@ fn execute_reaction<T: DApp<()>>(
                     }
                 })
                 .collect();
-            result_or_error.chain_err(|| {
+            match store_result_in_archive.chain_err(|| {
                 format!(
                     "could not convert to hash one of these: {:?}",
                     resulting_hash.hashes
                 )
-            })?;
-        }
-        Reaction::Step(step_request) => {
-            info!(
-                "Step request: {:?}",
-                emulator.step(StepRequest {
-                    session: step_request.0,
-                    time: step_request.1.as_u64(),
-                })
-            );
-        }
-        Reaction::Transaction(transaction_request) => {
-            info!(
-                "Send transaction (concern {:?}, index {}): {:?}",
-                main_concern, instance, transaction_request
-            );
+            }) {
+                Ok(r) => return web3::futures::future::ok::<(), _>(()),
+                Err(e) => {
+                    return web3::futures::future::err(e);
+                }
+            };
+        }));
+}
 
-            transaction_manager
-                .send(transaction_request)
-                .wait()
-                .chain_err(|| format!("transaction manager failed to send"))?;
-        }
-        Reaction::Idle => {}
-    };
-    Ok(())
+fn process_step_request(
+    main_concern: Concern,
+    index: usize,
+    step_request: dapp::StepRequest,
+    emulator: &EmulatorManager,
+    current_archive: &Archive,
+) -> Box<Future<Item = (), Error = Error>> {
+    info!(
+        "Step request. Concern {:?}, index {}, request {:?}",
+        main_concern,
+        index,
+        emulator.step(StepRequest {
+            session: step_request.id.clone(),
+            time: step_request.time.as_u64(),
+        })
+    );
+
+    return Box::new(web3::futures::future::ok::<(), Error>(()));
+}
+
+fn process_transaction_request(
+    main_concern: Concern,
+    index: usize,
+    transaction_request: TransactionRequest,
+    transaction_manager: &TransactionManager,
+) -> Box<Future<Item = (), Error = Error>> {
+    info!(
+        "Send transaction (concern {:?}, index {}): {:?}",
+        main_concern, index, transaction_request
+    );
+    Box::new(transaction_manager.send(transaction_request).map_err(|e| {
+        e.chain_err(|| format!("transaction manager failed to send"))
+    }))
 }
 
 pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {
-    let mut samples = archive
-        .entry(id.clone())
-        .or_insert((SampleRun::new(), SampleStep::new()));
+    let mut samples = archive.entry(id.clone()).or_insert(SamplePair {
+        run: SampleRun::new(),
+        step: SampleStep::new(),
+    });
     //samples.0.insert(time, hash);
-    if let Some(s) = samples.0.insert(time, hash) {
+    if let Some(s) = samples.run.insert(time, hash) {
         warn!("Machine {} at time {} recomputed", id, time);
     }
 }
@@ -274,11 +356,12 @@ pub fn add_step(
     time: U256,
     proof: dapp::Proof,
 ) {
-    let mut samples = archive
-        .entry(id.clone())
-        .or_insert((SampleRun::new(), SampleStep::new()));
+    let mut samples = archive.entry(id.clone()).or_insert(SamplePair {
+        run: SampleRun::new(),
+        step: SampleStep::new(),
+    });
     //samples.0.insert(time, hash);
-    if let Some(s) = samples.1.insert(time, proof) {
+    if let Some(s) = samples.step.insert(time, proof) {
         warn!("Machine {} at time {} recomputed", id, time);
     }
 }
