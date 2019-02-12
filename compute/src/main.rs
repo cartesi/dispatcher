@@ -7,26 +7,12 @@ extern crate compute;
 extern crate dispatcher;
 extern crate env_logger;
 extern crate error;
+extern crate utils;
 
 use compute::Compute;
 use dispatcher::Dispatcher;
 use error::*;
-
-fn print_error(e: &Error) {
-    error!("error: {}", e);
-
-    for e in e.iter().skip(1) {
-        error!("caused by: {}", e);
-    }
-
-    // The backtrace is not always generated. Try to run this example
-    // with `RUST_BACKTRACE=1`.
-    if let Some(backtrace) = e.backtrace() {
-        error!("backtrace: {:?}", backtrace);
-    }
-
-    ::std::process::exit(1);
-}
+use utils::print_error;
 
 fn main() {
     env_logger::init();
@@ -39,11 +25,5 @@ fn main() {
         }
     };
 
-    if let Err(ref e) = dispatcher.run::<Compute>() {
-        print_error(e);
-    }
-    // let accounts = web3.eth().accounts().wait()?;
-    // println!("Account: {:?}", accounts[0]);
-    // let block_number = web3.eth().block_number().wait()?.as_u64();
-    // println!("Block number: {:?}", block_number);
+    dispatcher.run::<Compute>();
 }
