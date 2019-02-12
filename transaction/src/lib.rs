@@ -137,7 +137,7 @@ impl TransactionManager {
     pub fn send(
         &self,
         request: TransactionRequest,
-    ) -> Box<Future<Item = (), Error = Error>> {
+    ) -> Box<Future<Item = (), Error = Error> + Send> {
         // async_block needs owned values, so let us clone some stuff
         let web3 = Arc::clone(&self.web3);
         let request = request.clone();

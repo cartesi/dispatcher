@@ -179,7 +179,7 @@ impl StateManager {
     fn get_expanded_cache(
         &self,
         concern: Concern,
-    ) -> Box<Future<Item = Arc<ConcernCache>, Error = Error>> {
+    ) -> Box<Future<Item = Arc<ConcernCache>, Error = Error> + Send> {
         let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
@@ -285,7 +285,7 @@ impl StateManager {
     pub fn get_indices(
         &self,
         concern: Concern,
-    ) -> Box<Future<Item = Vec<usize>, Error = Error>> {
+    ) -> Box<Future<Item = Vec<usize>, Error = Error> + Send> {
         let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
@@ -355,7 +355,7 @@ impl StateManager {
         &self,
         concern: Concern,
         index: usize,
-    ) -> Box<Future<Item = Instance, Error = Error>> {
+    ) -> Box<Future<Item = Instance, Error = Error> + Send> {
         // this first implementation is completely synchronous
         // since we wait for all internal futures and then return
         // an imediatly available future. But we should refactor this

@@ -1,11 +1,10 @@
-#![feature(proc_macro_hygiene, generators)]
-
 pub mod dapp;
 
 extern crate configuration;
 extern crate emulator;
 extern crate error;
 extern crate ethereum_types;
+extern crate tokio;
 extern crate utils;
 extern crate web3;
 
@@ -34,11 +33,18 @@ use ethabi::Token;
 use ethereum_types::{H256, U256};
 use serde_json::Value;
 use state::StateManager;
+use std::collections::HashSet;
+use std::time::Duration;
+use tokio::io;
+use tokio::net::TcpListener;
+use tokio::timer::Interval;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
-use utils::EthWeb3;
-use web3::futures::Future;
+use utils::{print_error, EthWeb3};
+use web3::futures::future::lazy;
+use web3::futures::sync::mpsc;
+use web3::futures::{future, stream, Future, Stream};
 
-use std::sync::mpsc;
+//use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -102,59 +108,105 @@ impl Dispatcher {
         return Ok(dispatcher);
     }
 
-    pub fn run<T: DApp<()>>(&self) -> Result<()> {
-        let main_concern = (&self).config.main_concern.clone();
-
-        trace!("Getting instances for {:?}", main_concern);
-
-        let indices: Vec<usize>;
-        {
-            let s = &self.state_manager.clone();
-            indices = s
-                .lock()
-                .unwrap()
-                .get_indices(main_concern.clone())
-                .wait()
-                .chain_err(|| format!("could not get issues"))?;
+    pub fn run<T: DApp<()>>(&self) {
+        enum Message {
+            Tick,
+            Done,
         }
 
-        let mut thread_handles = vec![];
+        struct State {
+            handled: HashSet<usize>,
+        }
 
-        for index in indices.into_iter() {
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // temporary for testing purposes
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // if *instance != 13 as usize {
-            //     continue;
-            // }
+        // Interval at which we poll and dispatch instances
+        let tick_duration = Duration::from_secs(3);
 
-            //            let (tx, rx) = mpsc::channel();
+        let interval = Interval::new_interval(tick_duration)
+            .map(|_| Message::Tick)
+            .map_err(|_| ())
+            .take(10);
 
-            let transaction_manager_clone = (&self).transaction_manager.clone();
-            let state_manager_clone = (&self).state_manager.clone();
-            let emulator_clone = (&self).emulator.clone();
-            let current_archive_clone = (&self).current_archive.clone();
+        let messages = interval;
 
-            let mut executer = move || -> Result<()> {
-                execute_reaction::<T>(
+        let initial_state = State {
+            handled: HashSet::new(),
+        };
+
+        let main_concern = (&self).config.main_concern.clone();
+        let transaction_manager = (&self).transaction_manager.clone();
+        let state_manager = (&self).state_manager.clone();
+        let emulator = (&self).emulator.clone();
+        let current_archive = (&self).current_archive.clone();
+
+        let process = messages
+            .fold(initial_state, move |_state, _message| {
+                let main_concern_clone = main_concern.clone();
+                let transaction_manager_clone = transaction_manager.clone();
+                let state_manager_clone = state_manager.clone();
+                let emulator_clone = emulator.clone();
+                let current_archive_clone = current_archive.clone();
+
+                dispatch_instances::<T>(
                     main_concern,
-                    index,
                     transaction_manager_clone,
                     state_manager_clone,
                     emulator_clone,
                     current_archive_clone,
                 )
-                .wait()
-            };
+                .map(|_| State {
+                    handled: HashSet::new(),
+                })
+            })
+            .map(|_| ());
 
-            thread_handles.push(thread::spawn(executer));
-        }
-
-        for t in thread_handles {
-            t.join().unwrap();
-        }
-        return Ok(());
+        tokio::run(process);
     }
+}
+
+fn dispatch_instances<T: DApp<()>>(
+    main_concern: Concern,
+    transaction_manager_arc: Arc<Mutex<TransactionManager>>,
+    state_manager_arc: Arc<Mutex<StateManager>>,
+    emulator_arc: Arc<Mutex<EmulatorManager>>,
+    current_archive_arc: Arc<Mutex<Archive>>,
+) -> Box<Future<Item = (), Error = ()> + Send> {
+    trace!("Getting instances for {:?}", main_concern);
+
+    let state_manager_clone = state_manager_arc.clone();
+    let state_manager_lock = state_manager_clone.lock().unwrap();
+    //    let indices: Stream<Item = usize, Error = ()> = s
+    Box::new(
+        state_manager_lock
+            .get_indices(main_concern.clone())
+            .map_err(|e| {
+                print_error(
+                    &e.chain_err(|| format!("could not get issue indices")),
+                );
+            })
+            .map(|vector_of_indices| stream::iter_ok(vector_of_indices))
+            .flatten_stream()
+            //.map(|u| Ok(u))
+            .for_each(move |index| {
+                let transaction_manager_clone = transaction_manager_arc.clone();
+                let state_manager_clone = state_manager_arc.clone();
+                let emulator_clone = emulator_arc.clone();
+                let current_archive_clone = current_archive_arc.clone();
+
+                tokio::spawn(
+                    execute_reaction::<T>(
+                        main_concern,
+                        index,
+                        transaction_manager_clone,
+                        state_manager_clone,
+                        emulator_clone,
+                        current_archive_clone,
+                    )
+                    .map_err(|e| print_error(&e)),
+                );
+
+                Ok(())
+            }),
+    )
 }
 
 fn execute_reaction<T: DApp<()>>(
@@ -164,7 +216,7 @@ fn execute_reaction<T: DApp<()>>(
     state_manager_arc: Arc<Mutex<StateManager>>,
     emulator_arc: Arc<Mutex<EmulatorManager>>,
     current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = Error>> {
+) -> Box<Future<Item = (), Error = Error> + Send> {
     let state_manager_clone = state_manager_arc.clone();
     let state_manager_lock = state_manager_clone.lock().unwrap();
 
@@ -172,64 +224,60 @@ fn execute_reaction<T: DApp<()>>(
         state_manager_lock
             .get_instance(main_concern, index)
             .and_then(
-                move |instance| -> Box<Future<Item = (), Error = Error>> {
-                    let transaction_manager =
-                        transaction_manager_arc.lock().unwrap();
-                    let state_manager = state_manager_arc.lock().unwrap();
-                    let emulator = emulator_arc.lock().unwrap();
-                    let mut current_archive =
-                        current_archive_arc.lock().unwrap();
+            move |instance| -> Box<Future<Item = (), Error = Error> + Send> {
+                let transaction_manager =
+                    transaction_manager_arc.lock().unwrap();
+                let state_manager = state_manager_arc.lock().unwrap();
+                let emulator = emulator_arc.lock().unwrap();
+                let mut current_archive = current_archive_arc.lock().unwrap();
 
-                    let reaction =
-                        match T::react(&instance, &current_archive, &())
-                            .chain_err(|| {
-                                format!("could not get dapp reaction")
-                            }) {
-                            Ok(r) => r,
-                            Err(e) => {
-                                return Box::new(web3::futures::future::err(e));
-                            }
-                        };
-                    trace!(
-                        "Reaction to instance {} of {} is: {:?}",
-                        index,
-                        main_concern.contract_address,
-                        reaction
-                    );
+                let reaction = match T::react(&instance, &current_archive, &())
+                    .chain_err(|| format!("could not get dapp reaction"))
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        return Box::new(web3::futures::future::err(e));
+                    }
+                };
+                trace!(
+                    "Reaction to instance {} of {} is: {:?}",
+                    index,
+                    main_concern.contract_address,
+                    reaction
+                );
 
-                    match reaction {
-                        Reaction::Request(run_request) => {
-                            let current_archive_clone =
-                                current_archive_arc.clone();
-                            process_run_request(
-                                main_concern,
-                                index,
-                                run_request,
-                                &emulator,
-                                current_archive_clone,
-                            )
-                        }
-                        Reaction::Step(step_request) => process_step_request(
+                match reaction {
+                    Reaction::Request(run_request) => {
+                        let current_archive_clone = current_archive_arc.clone();
+                        process_run_request(
                             main_concern,
                             index,
-                            step_request,
+                            run_request,
                             &emulator,
-                            &mut current_archive,
-                        ),
-                        Reaction::Transaction(transaction_request) => {
-                            process_transaction_request(
-                                main_concern,
-                                index,
-                                transaction_request,
-                                &transaction_manager,
-                            )
-                        }
-                        Reaction::Idle => {
-                            Box::new(web3::futures::future::ok::<(), _>(()))
-                        }
+                            current_archive_clone,
+                        )
                     }
-                },
-            ),
+                    Reaction::Step(step_request) => process_step_request(
+                        main_concern,
+                        index,
+                        step_request,
+                        &emulator,
+                        &mut current_archive,
+                    ),
+                    Reaction::Transaction(transaction_request) => {
+                        process_transaction_request(
+                            main_concern,
+                            index,
+                            transaction_request,
+                            &transaction_manager,
+                        )
+                    }
+                    Reaction::Idle => {
+                        Box::new(web3::futures::future::ok::<(), _>(()))
+                    }
+                }
+            },
+        ),
     );
 }
 
@@ -239,7 +287,7 @@ fn process_run_request(
     run_request: SampleRequest,
     emulator: &EmulatorManager,
     current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = Error>> {
+) -> Box<Future<Item = (), Error = Error> + Send> {
     return Box::new(emulator
         .run(RunRequest {
             session: run_request.id.clone(),
@@ -310,7 +358,7 @@ fn process_step_request(
     step_request: dapp::StepRequest,
     emulator: &EmulatorManager,
     current_archive: &Archive,
-) -> Box<Future<Item = (), Error = Error>> {
+) -> Box<Future<Item = (), Error = Error> + Send> {
     info!(
         "Step request. Concern {:?}, index {}, request {:?}",
         main_concern,
@@ -329,7 +377,7 @@ fn process_transaction_request(
     index: usize,
     transaction_request: TransactionRequest,
     transaction_manager: &TransactionManager,
-) -> Box<Future<Item = (), Error = Error>> {
+) -> Box<Future<Item = (), Error = Error> + Send> {
     info!(
         "Send transaction (concern {:?}, index {}): {:?}",
         main_concern, index, transaction_request
