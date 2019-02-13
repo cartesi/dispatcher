@@ -174,7 +174,7 @@ fn dispatch_instances<T: DApp<()>>(
 
     let state_manager_clone = state_manager_arc.clone();
     let state_manager_lock = state_manager_clone.lock().unwrap();
-    //    let indices: Stream<Item = usize, Error = ()> = s
+
     Box::new(
         state_manager_lock
             .get_indices(main_concern.clone())
@@ -185,7 +185,6 @@ fn dispatch_instances<T: DApp<()>>(
             })
             .map(|vector_of_indices| stream::iter_ok(vector_of_indices))
             .flatten_stream()
-            //.map(|u| Ok(u))
             .for_each(move |index| {
                 let transaction_manager_clone = transaction_manager_arc.clone();
                 let state_manager_clone = state_manager_arc.clone();
