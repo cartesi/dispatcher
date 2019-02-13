@@ -208,9 +208,14 @@ impl TransactionManager {
                     confirmations,
                 )
             );
-            info!("Transaction sent with hash: {:?}", hash?);
-            assert_eq!(Address::from(keccak(key.public())), signed_tx.sender());
-            assert_eq!(signed_tx.chain_id(), Some(69));
+            match hash {
+                Ok(h) => {
+                   info!("Transaction sent with hash: {:?}", h);},
+                Err(e) => {
+                   warn!("Failed to send transaction. Error {}", e);
+                },
+            };
+
             Ok(())
         })
     }
