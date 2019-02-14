@@ -36,7 +36,7 @@ use state::StateManager;
 use std::collections::HashSet;
 use std::time::Duration;
 use tokio::io;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::timer::Interval;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::{print_error, EthWeb3};
@@ -110,6 +110,7 @@ impl Dispatcher {
 
     pub fn run<T: DApp<()>>(&self) {
         enum Message {
+            Socket(TcpStream),
             Tick,
             Done,
         }
@@ -126,8 +127,21 @@ impl Dispatcher {
             .map_err(|_| ())
             .take(10);
 
-        let messages = interval;
+        // accept queries from port 3003
+        let addr = "127.0.0.1:3003".parse().unwrap();
+        let listener =
+            TcpListener::bind(&addr).expect("could not bind to port 3003");
+        let incoming = listener
+            .incoming()
+            .map(|socket| Message::Socket(socket))
+            .map_err(|_| ());
 
+        // join all the streams
+        let messages = interval.select(incoming);
+
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // use this state to avoid treating an instance twice
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         let initial_state = State {
             handled: HashSet::new(),
         };
@@ -140,52 +154,96 @@ impl Dispatcher {
         let current_archive_process = (&self).current_archive.clone();
 
         let process = messages
-            .fold(initial_state, move |_state, _message| {
-                trace!("Getting indices for {:?}", main_concern_process);
-
-                let state_manager_indices = state_manager_process.clone();
-
-                let stream_of_indices = state_manager_indices
-                    .lock()
-                    .unwrap()
-                    .get_indices(main_concern_process.clone())
-                    .map_err(|e| {
-                        print_error(&e.chain_err(|| {
-                            format!("could not get issue indices")
-                        }));
-                    })
-                    .map(|vector_of_indices| stream::iter_ok(vector_of_indices))
-                    .flatten_stream();
-
-                // clone pointers to move inside each index
-                let main_concern_index = main_concern_process.clone();
-                let transaction_manager_index =
-                    transaction_manager_process.clone();
-                let state_manager_index = state_manager_process.clone();
-                let emulator_index = emulator_process.clone();
-                let current_archive_index = current_archive_process.clone();
-
-                stream_of_indices
-                    .inspect(|index| trace!("Processing index {}", index))
-                    .for_each(move |index| {
-                        tokio::spawn(
-                            execute_reaction::<T>(
-                                main_concern_index,
-                                index,
-                                transaction_manager_index.clone(),
-                                state_manager_index.clone(),
-                                emulator_index.clone(),
-                                current_archive_index.clone(),
+            .fold(
+                initial_state,
+                move |_state,
+                      message|
+                      -> Box<Future<Item = State, Error = ()> + Send> {
+                    match message {
+                        Message::Socket(socket) => {
+                            Box::new(
+                                io::write_all(socket, "hello world")
+                                    // Drop the socket
+                                    .map(|_| State {
+                                        handled: HashSet::new(),
+                                    })
+                                    .map_err(|e| {
+                                        error!("socket error = {:?}", e)
+                                    }),
                             )
-                            .map_err(|e| print_error(&e)),
-                        );
+                        }
+                        Message::Tick => {
+                            trace!(
+                                "Getting indices for {:?}",
+                                main_concern_process
+                            );
 
-                        Ok(())
-                    })
-                    .map(|_| State {
-                        handled: HashSet::new(),
-                    })
-            })
+                            let state_manager_indices =
+                                state_manager_process.clone();
+
+                            let stream_of_indices = state_manager_indices
+                                .lock()
+                                .unwrap()
+                                .get_indices(main_concern_process.clone())
+                                .map_err(|e| {
+                                    print_error(&e.chain_err(|| {
+                                        format!("could not get issue indices")
+                                    }));
+                                })
+                                .map(|vector_of_indices| {
+                                    stream::iter_ok(vector_of_indices)
+                                })
+                                .flatten_stream();
+
+                            // clone pointers to move inside each index
+                            let main_concern_index =
+                                main_concern_process.clone();
+                            let transaction_manager_index =
+                                transaction_manager_process.clone();
+                            let state_manager_index =
+                                state_manager_process.clone();
+                            let emulator_index = emulator_process.clone();
+                            let current_archive_index =
+                                current_archive_process.clone();
+
+                            Box::new(
+                                stream_of_indices
+                                    .inspect(|index| {
+                                        trace!("Processing index {}", index)
+                                    })
+                                    .for_each(move |index| {
+                                        tokio::spawn(
+                                            execute_reaction::<T>(
+                                                main_concern_index,
+                                                index,
+                                                transaction_manager_index
+                                                    .clone(),
+                                                state_manager_index.clone(),
+                                                emulator_index.clone(),
+                                                current_archive_index.clone(),
+                                            )
+                                            .map_err(|e| print_error(&e)),
+                                        );
+
+                                        Ok(())
+                                    })
+                                    .map(|_| State {
+                                        handled: HashSet::new(),
+                                    }),
+                            )
+                        },
+                        _ => {
+                            Box::new(
+                                web3::futures::future::ok::<State, ()>(
+                                    State {
+                                        handled: HashSet::new(),
+                                    }
+                                )
+                            )
+                        }
+                    }
+                },
+            )
             .map(|_| ());
 
         tokio::run(process);
