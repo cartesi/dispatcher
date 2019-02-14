@@ -132,80 +132,64 @@ impl Dispatcher {
             handled: HashSet::new(),
         };
 
-        let main_concern = (&self).config.main_concern.clone();
-        let transaction_manager = (&self).transaction_manager.clone();
-        let state_manager = (&self).state_manager.clone();
-        let emulator = (&self).emulator.clone();
-        let current_archive = (&self).current_archive.clone();
+        // clone pointers to move inside the process
+        let main_concern_process = (&self).config.main_concern.clone();
+        let transaction_manager_process = (&self).transaction_manager.clone();
+        let state_manager_process = (&self).state_manager.clone();
+        let emulator_process = (&self).emulator.clone();
+        let current_archive_process = (&self).current_archive.clone();
 
         let process = messages
             .fold(initial_state, move |_state, _message| {
-                let main_concern_clone = main_concern.clone();
-                let transaction_manager_clone = transaction_manager.clone();
-                let state_manager_clone = state_manager.clone();
-                let emulator_clone = emulator.clone();
-                let current_archive_clone = current_archive.clone();
+                trace!("Getting indices for {:?}", main_concern_process);
 
-                dispatch_instances::<T>(
-                    main_concern,
-                    transaction_manager_clone,
-                    state_manager_clone,
-                    emulator_clone,
-                    current_archive_clone,
-                )
-                .map(|_| State {
-                    handled: HashSet::new(),
-                })
+                let state_manager_indices = state_manager_process.clone();
+
+                let stream_of_indices = state_manager_indices
+                    .lock()
+                    .unwrap()
+                    .get_indices(main_concern_process.clone())
+                    .map_err(|e| {
+                        print_error(&e.chain_err(|| {
+                            format!("could not get issue indices")
+                        }));
+                    })
+                    .map(|vector_of_indices| stream::iter_ok(vector_of_indices))
+                    .flatten_stream();
+
+                // clone pointers to move inside each index
+                let main_concern_index = main_concern_process.clone();
+                let transaction_manager_index =
+                    transaction_manager_process.clone();
+                let state_manager_index = state_manager_process.clone();
+                let emulator_index = emulator_process.clone();
+                let current_archive_index = current_archive_process.clone();
+
+                stream_of_indices
+                    .inspect(|index| trace!("Processing index {}", index))
+                    .for_each(move |index| {
+                        tokio::spawn(
+                            execute_reaction::<T>(
+                                main_concern_index,
+                                index,
+                                transaction_manager_index.clone(),
+                                state_manager_index.clone(),
+                                emulator_index.clone(),
+                                current_archive_index.clone(),
+                            )
+                            .map_err(|e| print_error(&e)),
+                        );
+
+                        Ok(())
+                    })
+                    .map(|_| State {
+                        handled: HashSet::new(),
+                    })
             })
             .map(|_| ());
 
         tokio::run(process);
     }
-}
-
-fn dispatch_instances<T: DApp<()>>(
-    main_concern: Concern,
-    transaction_manager_arc: Arc<Mutex<TransactionManager>>,
-    state_manager_arc: Arc<Mutex<StateManager>>,
-    emulator_arc: Arc<Mutex<EmulatorManager>>,
-    current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = ()> + Send> {
-    trace!("Getting instances for {:?}", main_concern);
-
-    let state_manager_clone = state_manager_arc.clone();
-    let state_manager_lock = state_manager_clone.lock().unwrap();
-
-    Box::new(
-        state_manager_lock
-            .get_indices(main_concern.clone())
-            .map_err(|e| {
-                print_error(
-                    &e.chain_err(|| format!("could not get issue indices")),
-                );
-            })
-            .map(|vector_of_indices| stream::iter_ok(vector_of_indices))
-            .flatten_stream()
-            .for_each(move |index| {
-                let transaction_manager_clone = transaction_manager_arc.clone();
-                let state_manager_clone = state_manager_arc.clone();
-                let emulator_clone = emulator_arc.clone();
-                let current_archive_clone = current_archive_arc.clone();
-
-                tokio::spawn(
-                    execute_reaction::<T>(
-                        main_concern,
-                        index,
-                        transaction_manager_clone,
-                        state_manager_clone,
-                        emulator_clone,
-                        current_archive_clone,
-                    )
-                    .map_err(|e| print_error(&e)),
-                );
-
-                Ok(())
-            }),
-    )
 }
 
 fn execute_reaction<T: DApp<()>>(
