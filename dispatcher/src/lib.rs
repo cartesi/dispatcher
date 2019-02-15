@@ -37,6 +37,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::prelude::Sink;
 use tokio::timer::Interval;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::{print_error, EthWeb3};
@@ -58,10 +59,25 @@ pub struct Dispatcher {
     config: Configuration,
     web3: web3::api::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
+    assets: Assets,
+}
+
+struct Assets {
     transaction_manager: Arc<Mutex<TransactionManager>>,
     state_manager: Arc<Mutex<StateManager>>,
     emulator: Arc<Mutex<EmulatorManager>>,
     current_archive: Arc<Mutex<Archive>>,
+}
+
+impl Assets {
+    fn clone(&self) -> Self {
+        Assets {
+            transaction_manager: self.transaction_manager.clone(),
+            state_manager: self.state_manager.clone(),
+            emulator: self.emulator.clone(),
+            current_archive: self.current_archive.clone(),
+        }
+    }
 }
 
 impl Dispatcher {
@@ -99,92 +115,127 @@ impl Dispatcher {
             config: config,
             web3: web3,
             _eloop: _eloop,
-            transaction_manager: Arc::new(Mutex::new(transaction_manager)),
-            state_manager: Arc::new(Mutex::new(state_manager)),
-            emulator: Arc::new(Mutex::new(emulator)),
-            current_archive: Arc::new(Mutex::new(current_archive)),
+            assets: Assets {
+                transaction_manager: Arc::new(Mutex::new(transaction_manager)),
+                state_manager: Arc::new(Mutex::new(state_manager)),
+                emulator: Arc::new(Mutex::new(emulator)),
+                current_archive: Arc::new(Mutex::new(current_archive)),
+            },
         };
 
         return Ok(dispatcher);
     }
 
     pub fn run<T: DApp<()>>(&self) {
-        enum Message {
-            Socket(TcpStream),
-            Tick,
-            Done,
-        }
+        // get owned copies of main_concern and assets
+        let main_concern_run = (&self).config.main_concern.clone();
+        let assets_run = (&self).assets.clone();
+        tokio::run(lazy(move || {
+            // start listening to port
+            let addr = "127.0.0.1:3003".parse().unwrap();
+            let listener =
+                TcpListener::bind(&addr).expect("could not bind to port 3003");
 
-        struct State {
-            handled: HashSet<usize>,
-        }
+            let (query_tx, query_rx) = mpsc::channel(1_024);
 
-        // Interval at which we poll and dispatch instances
-        let tick_duration = Duration::from_secs(3);
+            tokio::spawn(background_process::<T>(
+                main_concern_run,
+                assets_run,
+                query_rx,
+            ));
 
-        let interval = Interval::new_interval(tick_duration)
-            .map(|_| Message::Tick)
-            .map_err(|_| ())
-            .take(10);
+            // accept queries from port specified in config
+            listener
+                .incoming()
+                .for_each(move |socket| {
+                    tokio::spawn({
+                        let tx = query_tx.clone();
+                        // Receive the next inbound socket
+                        tx.send(3);
+                        io::write_all(socket, "Hello world!!!")
+                            // Drop the socket
+                            .map(|_| ())
+                            // Write any error to STDOUT
+                            .map_err(|e| error!("socket error = {:?}", e))
+                    });
+                    Ok(())
+                })
+                .map_err(|e| error!("Listener error = {:?}", e))
+        }))
+    }
+}
 
-        // accept queries from port 3003
-        let addr = "127.0.0.1:3003".parse().unwrap();
-        let listener =
-            TcpListener::bind(&addr).expect("could not bind to port 3003");
-        let incoming = listener
-            .incoming()
-            .map(|socket| Message::Socket(socket))
-            .map_err(|_| ());
+fn background_process<T: DApp<()>>(
+    main_concern: Concern,
+    assets: Assets,
+    query_rx: mpsc::Receiver<usize>,
+) -> Box<Future<Item = (), Error = ()> + Send> {
+    #[derive(PartialEq)]
+    enum Message {
+        Tick,
+        Done,
+        Query(usize),
+        Indices,
+        Executed,
+    }
 
-        // join all the streams
-        let messages = interval.select(incoming);
+    struct State {
+        handled: HashSet<usize>,
+    }
 
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        // use this state to avoid treating an instance twice
-        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        let initial_state = State {
-            handled: HashSet::new(),
-        };
+    // Interval at which we poll and dispatch instances
+    let tick_duration = Duration::from_secs(3);
 
-        // clone pointers to move inside the process
-        let main_concern_process = (&self).config.main_concern.clone();
-        let transaction_manager_process = (&self).transaction_manager.clone();
-        let state_manager_process = (&self).state_manager.clone();
-        let emulator_process = (&self).emulator.clone();
-        let current_archive_process = (&self).current_archive.clone();
+    let interval = Interval::new_interval(tick_duration)
+        .map(|_| Message::Tick)
+        .map_err(|_| ());
 
-        let process = messages
+    let messages = query_rx
+        .map(Message::Query)
+        // Merge in the stream of intervals
+        .select(interval)
+        .take_while(|item| future::ok(*item != Message::Done));
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // use this state to avoid treating an instance twice
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    let initial_state = State {
+        handled: HashSet::new(),
+    };
+
+    // clone pointers to move inside the process
+    let main_concern_fold = main_concern.clone();
+    let assets_fold = assets.clone();
+
+    return Box::new(
+        messages
             .fold(
                 initial_state,
                 move |_state,
                       message|
                       -> Box<Future<Item = State, Error = ()> + Send> {
                     match message {
-                        Message::Socket(socket) => {
-                            Box::new(
-                                io::write_all(socket, "hello world")
-                                    // Drop the socket
-                                    .map(|_| State {
-                                        handled: HashSet::new(),
-                                    })
-                                    .map_err(|e| {
-                                        error!("socket error = {:?}", e)
-                                    }),
-                            )
+                        Message::Query(u) => {
+                            error!("Received query: {}", u);
+                            Box::new(web3::futures::future::ok::<State, ()>(
+                                State {
+                                    handled: HashSet::new(),
+                                },
+                            ))
                         }
                         Message::Tick => {
                             trace!(
                                 "Getting indices for {:?}",
-                                main_concern_process
+                                main_concern_fold
                             );
 
                             let state_manager_indices =
-                                state_manager_process.clone();
+                                assets_fold.state_manager.clone();
 
                             let stream_of_indices = state_manager_indices
                                 .lock()
                                 .unwrap()
-                                .get_indices(main_concern_process.clone())
+                                .get_indices(main_concern_fold.clone())
                                 .map_err(|e| {
                                     print_error(&e.chain_err(|| {
                                         format!("could not get issue indices")
@@ -195,70 +246,48 @@ impl Dispatcher {
                                 })
                                 .flatten_stream();
 
-                            // clone pointers to move inside each index
-                            let main_concern_index =
-                                main_concern_process.clone();
-                            let transaction_manager_index =
-                                transaction_manager_process.clone();
-                            let state_manager_index =
-                                state_manager_process.clone();
-                            let emulator_index = emulator_process.clone();
-                            let current_archive_index =
-                                current_archive_process.clone();
+                            // clone assets to move inside each index
+                            let main_concern_index = main_concern_fold.clone();
+                            let assets_index = assets_fold.clone();
 
-                            Box::new(
-                                stream_of_indices
-                                    .inspect(|index| {
-                                        trace!("Processing index {}", index)
-                                    })
-                                    .for_each(move |index| {
-                                        tokio::spawn(
-                                            execute_reaction::<T>(
-                                                main_concern_index,
-                                                index,
-                                                transaction_manager_index
-                                                    .clone(),
-                                                state_manager_index.clone(),
-                                                emulator_index.clone(),
-                                                current_archive_index.clone(),
-                                            )
-                                            .map_err(|e| print_error(&e)),
-                                        );
-
-                                        Ok(())
-                                    })
-                                    .map(|_| State {
-                                        handled: HashSet::new(),
-                                    }),
-                            )
-                        },
-                        _ => {
-                            Box::new(
-                                web3::futures::future::ok::<State, ()>(
-                                    State {
-                                        handled: HashSet::new(),
-                                    }
-                                )
-                            )
+                            let returned_state = stream_of_indices
+                                .inspect(|index| {
+                                    trace!("Processing index {}", index)
+                                })
+                                .for_each(move |index| {
+                                    tokio::spawn(
+                                        execute_reaction::<T>(
+                                            main_concern_index,
+                                            index,
+                                            assets_index.clone(),
+                                        )
+                                        .map_err(|e| print_error(&e)),
+                                    );
+                                    Ok(())
+                                })
+                                .map(|_| State {
+                                    handled: HashSet::new(),
+                                });
+                            Box::new(returned_state)
                         }
+                        _ => Box::new(web3::futures::future::ok::<State, ()>(
+                            State {
+                                handled: HashSet::new(),
+                            },
+                        )),
                     }
                 },
             )
-            .map(|_| ());
-
-        tokio::run(process);
-    }
+            .map(|_| ()),
+    );
 }
 
 fn execute_reaction<T: DApp<()>>(
     main_concern: Concern,
     index: usize,
-    transaction_manager_arc: Arc<Mutex<TransactionManager>>,
-    state_manager_arc: Arc<Mutex<StateManager>>,
-    emulator_arc: Arc<Mutex<EmulatorManager>>,
-    current_archive_arc: Arc<Mutex<Archive>>,
+    assets: Assets,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
-    let state_manager_clone = state_manager_arc.clone();
+    let state_manager_clone = assets.state_manager.clone();
     let state_manager_lock = state_manager_clone.lock().unwrap();
 
     return Box::new(
@@ -267,10 +296,11 @@ fn execute_reaction<T: DApp<()>>(
             .and_then(
             move |instance| -> Box<Future<Item = (), Error = Error> + Send> {
                 let transaction_manager =
-                    transaction_manager_arc.lock().unwrap();
-                let state_manager = state_manager_arc.lock().unwrap();
-                let emulator = emulator_arc.lock().unwrap();
-                let mut current_archive = current_archive_arc.lock().unwrap();
+                    assets.transaction_manager.lock().unwrap();
+                let state_manager = assets.state_manager.lock().unwrap();
+                let emulator = assets.emulator.lock().unwrap();
+                let mut current_archive =
+                    assets.current_archive.lock().unwrap();
 
                 let reaction = match T::react(&instance, &current_archive, &())
                     .chain_err(|| format!("could not get dapp reaction"))
@@ -289,7 +319,8 @@ fn execute_reaction<T: DApp<()>>(
 
                 match reaction {
                     Reaction::Request(run_request) => {
-                        let current_archive_clone = current_archive_arc.clone();
+                        let current_archive_clone =
+                            assets.current_archive.clone();
                         process_run_request(
                             main_concern,
                             index,
