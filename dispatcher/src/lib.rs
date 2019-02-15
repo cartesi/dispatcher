@@ -22,6 +22,8 @@ extern crate serde_json;
 extern crate state;
 extern crate transaction;
 
+use std::str;
+
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
 use emulator::{
@@ -32,9 +34,9 @@ use emulator::{
 pub use error::*;
 use ethabi::Token;
 use ethereum_types::{H256, U256};
-use hyper::rt::Future;
-use hyper::service::service_fn_ok;
-use hyper::{Body, Request, Response, Server};
+use hyper::body::Payload;
+use hyper::service::service_fn;
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use serde_json::Value;
 use state::StateManager;
 use std::collections::HashSet;
@@ -46,7 +48,7 @@ use tokio::timer::Interval;
 use transaction::{Strategy, TransactionManager, TransactionRequest};
 use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
-use web3::futures::sync::mpsc;
+use web3::futures::sync::{mpsc, oneshot};
 use web3::futures::{future, stream, Future, Stream};
 
 //use std::sync::mpsc;
@@ -134,9 +136,10 @@ impl Dispatcher {
         // get owned copies of main_concern and assets
         let main_concern_run = (&self).config.main_concern.clone();
         let assets_run = (&self).assets.clone();
+        let port = (&self).config.query_port;
         tokio::run(lazy(move || {
             // start listening to port
-            let addr = ([127, 0, 0, 1], 3000).into();
+            let addr = ([127, 0, 0, 1], port).into();
 
             let (query_tx, query_rx) = mpsc::channel(1_024);
 
@@ -146,82 +149,104 @@ impl Dispatcher {
                 query_rx,
             ));
 
-            let server = Server::bind(&addr)
+            fn replier(
+                tx: mpsc::Sender<QueryHandle>,
+                req: Request<Body>,
+            ) -> Box<Future<Item = Response<Body>, Error = std::io::Error> + Send>
+            {
+                let (resp_tx, resp_rx) = oneshot::channel();
+                let (parts, body) = req.into_parts();
+
+                let body_future = body
+                    .map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("request error {}", e),
+                        )
+                    })
+                    .concat2();
+                let query_future = body_future
+                    .and_then(|body| {
+                        let query: Query = match serde_json::from_slice(&body) {
+                            Ok(q) => q,
+                            Err(e) => {
+                                error!("could not parse query: {:?}", &body);
+                                Query::Indices
+                            }
+                        };
+                        tx.send(QueryHandle {
+                            query: query,
+                            oneshot: resp_tx,
+                        })
+                        .map_err(|e| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("request error {}", e),
+                            )
+                        })
+                        .and_then(|_| {
+                            resp_rx
+                                .and_then(|answer| {
+                                    let response = Response::builder()
+                                        .header(
+                                            "Content-Type",
+                                            " application/json",
+                                        )
+                                        .body(Body::from(answer))
+                                        .unwrap();
+                                    Ok(response)
+                                })
+                                .map_err(|e| {
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        format!("request error {}", e),
+                                    )
+                                })
+                        })
+                    })
+                    .map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("request error {}", e),
+                        )
+                    });
+                Box::new(query_future)
+            };
+            let listener = tokio::net::TcpListener::bind(&addr)
+                .expect("could not bind to port");
+
+            Server::builder(listener.incoming())
                 .serve(move || {
                     let tx = query_tx.clone();
-
-                    fn transmit_query_to_background(
-                        req: Request<Body>,
-                    ) -> Box<
-                        Future<Item = Response<Body>, Error = hyper::Error>
-                            + Send,
-                    > {
-                        match (req.method(), req.uri().path()) {
-                            (&Method::GET, "/") => {
-                                let mut response = Response::new(Body::empty());
-                                *response.body_mut() =
-                                    Body::from("Try POSTing data to /echo");
-                                Box::new(future::ok(response))
-                            }
-                            (&Method::POST, "/query") => {
-                                Box::new(tx.send(3).and_then(|| {
-                                    let mut response =
-                                        Response::new(Body::empty());
-                                    *response.body_mut() = Body::from("Answer");
-                                    response
-                                }));
-                            }
-                            _ => {
-                                let mut response = Response::new(Body::empty());
-                                *response.status_mut() = StatusCode::NOT_FOUND;
-                                Box::new(future::ok(response))
-                            }
-                        }
-                    }
-
-                    // This is the `Service` that will handle the connection.
-                    // `service_fn_ok` is a helper to convert a function that
-                    // returns a Response into a `Service`.
-                    service_fn_ok(move |_: Request<Body>| {
-                        Response::new(Body::from("Hello World!"))
-                    })
+                    service_fn(move |req| replier(tx.clone(), req))
                 })
-                .map_err(|e| eprintln!("server error: {}", e));
-
-            // accept queries from port specified in config
-            listener
-                .incoming()
-                .for_each(move |socket| {
-                    tokio::spawn({
-                        let tx = query_tx.clone();
-                        // Receive the next inbound socket
-                        io::write_all(socket, "Hello world!!!")
-                            .and_then(|_| {
-                                tx.send(3)
-                                    .map_err(|_| io::ErrorKind::Other.into())
-                            })
-                            // Drop the socket
-                            .map(|_| ())
-                            // Write any error to STDOUT
-                            .map_err(|e| error!("socket error = {:?}", e))
-                    });
-                    Ok(())
-                })
-                .map_err(|e| error!("Listener error = {:?}", e))
+                .map_err(|e| error!("error in socket {}", e))
         }))
     }
+}
+
+#[derive(Debug)]
+struct QueryHandle {
+    query: Query,
+    oneshot: web3::futures::sync::oneshot::Sender<String>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+enum Query {
+    Indices,
+    Instance(usize),
 }
 
 fn background_process<T: DApp<()>>(
     main_concern: Concern,
     assets: Assets,
-    query_rx: mpsc::Receiver<usize>,
+    query_rx: mpsc::Receiver<QueryHandle>,
 ) -> Box<Future<Item = (), Error = ()> + Send> {
-    #[derive(PartialEq)]
+    // #[derive(PartialEq)]
     enum Message {
         Tick,
         Done,
-        Query(usize),
+        Asked(QueryHandle),
         Indices,
         Executed,
     }
@@ -238,10 +263,10 @@ fn background_process<T: DApp<()>>(
         .map_err(|_| ());
 
     let messages = query_rx
-        .map(Message::Query)
+        .map(Message::Asked)
         // Merge in the stream of intervals
-        .select(interval)
-        .take_while(|item| future::ok(*item != Message::Done));
+        .select(interval);
+    //        .take_while(|item| future::ok(*item != Message::Done));
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // use this state to avoid treating an instance twice
@@ -262,14 +287,43 @@ fn background_process<T: DApp<()>>(
                       message|
                       -> Box<Future<Item = State, Error = ()> + Send> {
                     match message {
-                        Message::Query(u) => {
-                            error!("Received query: {}", u);
+                        Message::Asked(q) => {
+                            info!("Received query: {:?}", q.query);
+                            let state_manager_query = assets_fold
+                                .state_manager
+                                .clone();
+                            match q.query {
+                                Query::Indices => {
+                                    let indices = state_manager_query
+                                        .lock()
+                                        .unwrap()
+                                        .get_indices(main_concern_fold.clone())
+                                        .wait()
+                                        .unwrap();
+                                    q.oneshot.send(
+                                        serde_json::to_string(&indices).unwrap()
+                                    ).unwrap();},
+                                Query::Instance(i) => {
+                                    let instance = state_manager_query
+                                        .lock()
+                                        .unwrap()
+                                        .get_instance(
+                                            main_concern_fold.clone(),
+                                            i
+                                        )
+                                        .wait()
+                                        .unwrap();
+                                    q.oneshot.send(
+                                        serde_json::to_string(&instance).unwrap()
+                                    ).unwrap();},
+                                };
+
                             Box::new(web3::futures::future::ok::<State, ()>(
                                 State {
                                     handled: HashSet::new(),
                                 },
                             ))
-                        }
+                        },
                         Message::Tick => {
                             trace!(
                                 "Getting indices for {:?}",

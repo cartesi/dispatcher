@@ -123,6 +123,9 @@ struct EnvCLIConfiguration {
     /// Number of confirmations for transaction
     #[structopt(long = "confirmations")]
     confirmations: Option<usize>,
+    /// Port used to make queries
+    #[structopt(long = "query_port")]
+    query_port: Option<u16>,
 }
 
 /// Structure to parse configuration from file
@@ -137,6 +140,7 @@ struct FileConfiguration {
     working_path: Option<String>,
     emulator_port: Option<u16>,
     confirmations: Option<usize>,
+    query_port: Option<u16>,
 }
 
 /// Configuration after parsing
@@ -152,6 +156,7 @@ pub struct Configuration {
     pub abis: HashMap<Concern, ConcernAbi>,
     pub emulator_port: u16,
     pub confirmations: usize,
+    pub query_port: u16,
 }
 
 // !!!!!!!!!!!
@@ -320,6 +325,14 @@ fn combine_config(
             "Need a port for the emulator (config file, command line or env)",
         ))))?;
 
+    let query_port: u16 = cli_config
+        .query_port
+        .or(env_config.query_port)
+        .or(file_config.query_port)
+        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Need a port for queries (config file, command line or env)",
+        ))))?;
+
     // determine number of confirmations (cli -> env -> config)
     let confirmations: usize = cli_config
         .confirmations
@@ -388,5 +401,6 @@ fn combine_config(
         abis: abis,
         emulator_port: emulator_port,
         confirmations: confirmations,
+        query_port: query_port,
     })
 }
