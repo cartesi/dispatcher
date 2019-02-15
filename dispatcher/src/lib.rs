@@ -16,6 +16,7 @@ extern crate env_logger;
 extern crate ethabi;
 extern crate ethcore_transaction;
 extern crate hex;
+extern crate hyper;
 extern crate serde;
 extern crate serde_json;
 extern crate state;
@@ -31,6 +32,9 @@ use emulator::{
 pub use error::*;
 use ethabi::Token;
 use ethereum_types::{H256, U256};
+use hyper::rt::Future;
+use hyper::service::service_fn_ok;
+use hyper::{Body, Request, Response, Server};
 use serde_json::Value;
 use state::StateManager;
 use std::collections::HashSet;
@@ -132,9 +136,7 @@ impl Dispatcher {
         let assets_run = (&self).assets.clone();
         tokio::run(lazy(move || {
             // start listening to port
-            let addr = "127.0.0.1:3003".parse().unwrap();
-            let listener =
-                TcpListener::bind(&addr).expect("could not bind to port 3003");
+            let addr = ([127, 0, 0, 1], 3000).into();
 
             let (query_tx, query_rx) = mpsc::channel(1_024);
 
@@ -143,6 +145,48 @@ impl Dispatcher {
                 assets_run,
                 query_rx,
             ));
+
+            let server = Server::bind(&addr)
+                .serve(move || {
+                    let tx = query_tx.clone();
+
+                    fn transmit_query_to_background(
+                        req: Request<Body>,
+                    ) -> Box<
+                        Future<Item = Response<Body>, Error = hyper::Error>
+                            + Send,
+                    > {
+                        match (req.method(), req.uri().path()) {
+                            (&Method::GET, "/") => {
+                                let mut response = Response::new(Body::empty());
+                                *response.body_mut() =
+                                    Body::from("Try POSTing data to /echo");
+                                Box::new(future::ok(response))
+                            }
+                            (&Method::POST, "/query") => {
+                                Box::new(tx.send(3).and_then(|| {
+                                    let mut response =
+                                        Response::new(Body::empty());
+                                    *response.body_mut() = Body::from("Answer");
+                                    response
+                                }));
+                            }
+                            _ => {
+                                let mut response = Response::new(Body::empty());
+                                *response.status_mut() = StatusCode::NOT_FOUND;
+                                Box::new(future::ok(response))
+                            }
+                        }
+                    }
+
+                    // This is the `Service` that will handle the connection.
+                    // `service_fn_ok` is a helper to convert a function that
+                    // returns a Response into a `Service`.
+                    service_fn_ok(move |_: Request<Body>| {
+                        Response::new(Body::from("Hello World!"))
+                    })
+                })
+                .map_err(|e| eprintln!("server error: {}", e));
 
             // accept queries from port specified in config
             listener
