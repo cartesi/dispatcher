@@ -7,6 +7,7 @@ extern crate envy;
 extern crate ethabi;
 extern crate ethkey;
 extern crate grpc;
+extern crate hyper;
 extern crate rustc_hex;
 extern crate serde_yaml;
 extern crate time;
@@ -27,11 +28,16 @@ error_chain! {
         LevelDB(leveldb::error::Error);
         Utf8(std::str::Utf8Error);
         Grpc(grpc::Error);
+        Hyper(hyper::Error);
     }
     links {
         Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
     }
     errors {
+        Mpsc(details: String) {
+            description("mspc send error")
+                display("mspc send error: {}", details)
+        }
         InvalidConfig(details: String) {
             description("invalid configuration")
                 display("invalid configuration: {}", details)

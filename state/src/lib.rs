@@ -43,7 +43,7 @@ use web3::types::{Bytes, CallRequest};
 
 use web3::contract::tokens::Tokenize;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Instance {
     pub concern: Concern,
     pub index: U256,

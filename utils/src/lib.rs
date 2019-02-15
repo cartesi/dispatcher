@@ -124,5 +124,5 @@ pub fn print_error(e: &Error) {
         error!("backtrace: {:?}", backtrace);
     }
 
-    ::std::process::exit(1);
+    //::std::process::exit(1);
 }
