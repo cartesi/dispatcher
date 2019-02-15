@@ -151,8 +151,11 @@ impl Dispatcher {
                     tokio::spawn({
                         let tx = query_tx.clone();
                         // Receive the next inbound socket
-                        tx.send(3);
                         io::write_all(socket, "Hello world!!!")
+                            .and_then(|_| {
+                                tx.send(3)
+                                    .map_err(|_| io::ErrorKind::Other.into())
+                            })
                             // Drop the socket
                             .map(|_| ())
                             // Write any error to STDOUT
