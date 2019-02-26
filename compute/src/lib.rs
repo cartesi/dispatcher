@@ -47,5 +47,7 @@ enum Role {
 }
 
 pub fn build_machine_id(index: U256, address: &Address) -> String {
-    return format!("{:x}:{}", address, index);
+    //return format!("{:x}:{}", address, index);
+    return "0000000000000000000000000000000000000000000000008888888888888888"
+        .to_string();
 }

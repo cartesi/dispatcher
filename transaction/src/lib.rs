@@ -181,8 +181,12 @@ impl TransactionManager {
                 value: Some(request.value),
                 data: Some(Bytes(raw_data.clone())),
             };
+            let request_string = format!("{:?}", request.clone());
             let gas = await!(web3.eth().estimate_gas(call_request, None))
-                .chain_err(|| format!("could not estimate gas usage"))?;
+                .chain_err(move ||
+                           format!("could not estimate gas usage for call {:?}",
+                                   request_string)
+                )?;
             info!("Gas usage estimated as {}", gas);
             info!("Signing transaction");
             let signed_tx = Transaction {

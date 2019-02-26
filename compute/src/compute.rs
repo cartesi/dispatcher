@@ -275,7 +275,6 @@ fn win_by_deadline_or_idle(
     if (current_time
         > ctx.time_of_last_move.as_u64() + ctx.round_duration.as_u64())
     {
-        error!("AAA");
         let request = TransactionRequest {
             concern: concern.clone(),
             value: U256::from(0),

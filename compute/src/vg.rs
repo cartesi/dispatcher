@@ -11,7 +11,9 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
+use super::transaction::TransactionRequest;
 use super::{Partition, Role};
+use partition::{PartitionCtx, PartitionCtxParsed};
 
 pub struct VG();
 
@@ -113,7 +115,7 @@ impl DApp<()> for VG {
         match role {
             Role::Claimer => match ctx.current_state.as_ref() {
                 "WaitPartition" => {
-                    // pass control to the partition dapp
+                    // get the partition instance to see if its is finished
                     let partition_instance =
                         instance.sub_instances.get(0).ok_or(Error::from(
                             ErrorKind::InvalidContractState(format!(
@@ -121,7 +123,60 @@ impl DApp<()> for VG {
                                 ctx.current_state
                             )),
                         ))?;
-                    return Partition::react(partition_instance, archive, &());
+
+                    let parsed: PartitionCtxParsed =
+                        serde_json::from_str(&partition_instance.json_data)
+                            .chain_err(|| {
+                                format!(
+                            "Could not parse partition instance json_data: {}",
+                            &instance.json_data
+                        )
+                            })?;
+                    let ctx: PartitionCtx = parsed.into();
+
+                    match ctx.current_state.as_ref() {
+                        "ChallengerWon" | "ClaimerWon" => {
+                            // claim victory by partition timeout
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "winByPartitionTimeout".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        "DivergenceFound" => {
+                            // start the machine run challenge
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "startMachineRunChallenge".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        _ => {
+                            // partition is still running,
+                            // pass control to the partition dapp
+                            return Partition::react(
+                                partition_instance,
+                                archive,
+                                &(),
+                            );
+                        }
+                    }
                 }
                 "WaitMemoryProveValues" => {
                     return Ok(Reaction::Idle); // does not concern claimer
@@ -144,7 +199,7 @@ impl DApp<()> for VG {
                         ))?;
                     return Partition::react(partition_instance, archive, &());
                 }
-                "WaitMemoryProveValues" => unimplemented!("w9sdf982"),
+                "WaitMemoryProveValues" => error!("w9sdf982"),
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
                         format!("Unknown current state {}", ctx.current_state),
