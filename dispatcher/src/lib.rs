@@ -256,7 +256,7 @@ fn background_process<T: DApp<()>>(
     }
 
     // Interval at which we poll and dispatch instances
-    let tick_duration = Duration::from_secs(3);
+    let tick_duration = Duration::from_secs(6);
 
     let interval = Interval::new_interval(tick_duration)
         .map(|_| Message::Tick)
@@ -555,9 +555,23 @@ fn process_transaction_request(
         "Send transaction (concern {:?}, index {}): {:?}",
         main_concern, index, transaction_request
     );
-    Box::new(transaction_manager.send(transaction_request).map_err(|e| {
-        e.chain_err(|| format!("transaction manager failed to send"))
-    }))
+    let main_concern_clone = main_concern.clone();
+    let index_clone = index.clone();
+    let transaction_request_clone = transaction_request.clone();
+    Box::new(
+        transaction_manager
+            .send(transaction_request)
+            .map_err(move |e| {
+                e.chain_err(move || {
+                    format!(
+                        "could not send transaction: {:?}, index {}, {:?}",
+                        main_concern_clone,
+                        index_clone,
+                        transaction_request_clone
+                    )
+                })
+            }),
+    )
 }
 
 pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {

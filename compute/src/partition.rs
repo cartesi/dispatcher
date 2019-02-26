@@ -25,33 +25,33 @@ pub struct Partition();
 // obtained from a simple derive
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #[derive(Serialize, Deserialize)]
-struct PartitionCtxParsed(
-    AddressField,  // challenger
-    AddressField,  // claimer
-    U256Array,     // queryArray
-    BoolArray,     // submittedArray
-    Bytes32Array,  // hashArray
-    String32Field, // currentState
-    U256Array5,    // uint values: finalTime
-                   // querySize
-                   // timeOfLastMove
-                   // roundDuration
-                   // divergenceTime
+pub struct PartitionCtxParsed(
+    pub AddressField,  // challenger
+    pub AddressField,  // claimer
+    pub U256Array,     // queryArray
+    pub BoolArray,     // submittedArray
+    pub Bytes32Array,  // hashArray
+    pub String32Field, // currentState
+    pub U256Array5,    // uint values: finalTime
+                       // querySize
+                       // timeOfLastMove
+                       // roundDuration
+                       // divergenceTime
 );
 
 #[derive(Debug)]
-struct PartitionCtx {
-    challenger: Address,
-    claimer: Address,
-    query_array: Vec<U256>,
-    submitted_array: Vec<bool>,
-    hash_array: Vec<H256>,
-    current_state: String,
-    final_time: U256,
-    query_size: U256,
-    time_of_last_move: U256,
-    round_duration: U256,
-    divergence_time: U256,
+pub struct PartitionCtx {
+    pub challenger: Address,
+    pub claimer: Address,
+    pub query_array: Vec<U256>,
+    pub submitted_array: Vec<bool>,
+    pub hash_array: Vec<H256>,
+    pub current_state: String,
+    pub final_time: U256,
+    pub query_size: U256,
+    pub time_of_last_move: U256,
+    pub round_duration: U256,
+    pub divergence_time: U256,
 }
 
 impl From<PartitionCtxParsed> for PartitionCtx {
@@ -233,16 +233,18 @@ impl DApp<()> for Partition {
                                 ),
                                 )),
                             )?;
-                            // get the i'th hash in hash array
-                            let claimed_hash =
-                                &ctx.hash_array.get(i).ok_or(Error::from(
+                            // get the (i + 1)'th hash in hash array
+                            let claimed_hash = &ctx
+                                .hash_array
+                                .get(i + 1)
+                                .ok_or(Error::from(
                                     ErrorKind::InvalidContractState(format!(
                                     "could not find element {} in hash array",
                                     i
                                 )),
                                 ))?;
                             // have we sampled that specific time?
-                            let hash = match run_samples.get(time) {
+                            let hash = match run_samples.get(next_time) {
                                 Some(hash) => hash,
                                 None => {
                                     // some hash not calculated yet, request all
@@ -261,25 +263,47 @@ impl DApp<()> for Partition {
                             };
 
                             if hash != *claimed_hash {
-                                // submit the relevant query
-                                let request = TransactionRequest {
-                                    concern: instance.concern.clone(),
-                                    value: U256::from(0),
-                                    function: "makeQuery".into(),
-                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    // improve these types by letting the
-                                    // dapp submit ethereum_types and convert
-                                    // them inside the transaction manager
-                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    data: vec![
-                                        Token::Uint(instance.index),
-                                        Token::Uint(U256::from(i)),
-                                        Token::Uint(*time),
-                                        Token::Uint(*next_time),
-                                    ],
-                                    strategy: transaction::Strategy::Simplest,
-                                };
-                                return Ok(Reaction::Transaction(request));
+                                if (next_time.as_u64() - time.as_u64() > 1) {
+                                    // submit the relevant query
+                                    let request = TransactionRequest {
+                                        concern: instance.concern.clone(),
+                                        value: U256::from(0),
+                                        function: "makeQuery".into(),
+                                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                        // improve these types by letting the
+                                        // dapp submit ethereum_types and convert
+                                        // them inside the transaction manager
+                                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                        data: vec![
+                                            Token::Uint(instance.index),
+                                            Token::Uint(U256::from(i)),
+                                            Token::Uint(*time),
+                                            Token::Uint(*next_time),
+                                        ],
+                                        strategy:
+                                            transaction::Strategy::Simplest,
+                                    };
+                                    return Ok(Reaction::Transaction(request));
+                                } else {
+                                    // submit divergence time
+                                    let request = TransactionRequest {
+                                        concern: instance.concern.clone(),
+                                        value: U256::from(0),
+                                        function: "presentDivergence".into(),
+                                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                        // improve these types by letting the
+                                        // dapp submit ethereum_types and convert
+                                        // them inside the transaction manager
+                                        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                        data: vec![
+                                            Token::Uint(instance.index),
+                                            Token::Uint(*time),
+                                        ],
+                                        strategy:
+                                            transaction::Strategy::Simplest,
+                                    };
+                                    return Ok(Reaction::Transaction(request));
+                                }
                             }
                         }
                         // no disagreement found. important bug!!!!

@@ -29,7 +29,7 @@ fn calculate_hasher_vector(
                     .parse::<U256>()
                     .expect("could not parse u256")
                     .low_u64()
-                    + std::cmp::max(time, 17);
+                    + std::cmp::min(time, 17);
             } else {
                 u = hash
                     .parse::<U256>()
