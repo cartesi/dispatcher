@@ -5,3 +5,4 @@ key.txt
 *.html
 /hasher/src/emu*
 /emulator/src/emu*
+/vir/*
