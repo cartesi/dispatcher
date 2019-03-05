@@ -28,8 +28,8 @@ use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
 use emulator::{
     Access, Backing, Drive, DriveId, DriveRequest, Hash, InitRequest,
-    MachineSpecification, Operation, Proof, Ram, ReadRequest, ReadResult,
-    RunRequest, SessionId, StepRequest, StepResult, Word,
+    MachineSpecification, Operation, Ram, ReadRequest, ReadResult, RunRequest,
+    SessionId, StepRequest, StepResult, Word,
 };
 pub use error::*;
 use ethabi::Token;
@@ -58,7 +58,8 @@ use std::thread;
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
     FieldType, Reaction, SamplePair, SampleRequest, SampleRun, SampleStep,
-    String32Field, U256Array, U256Array5, U256Field,
+    SampleStepRequest, String32Field, U256Array, U256Array5, U256Array6,
+    U256Field,
 };
 
 pub struct Dispatcher {
@@ -528,21 +529,49 @@ fn process_run_request(
 fn process_step_request(
     main_concern: Concern,
     index: usize,
-    step_request: dapp::StepRequest,
+    step_request: SampleStepRequest,
     emulator: &EmulatorManager,
     current_archive: &Archive,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
-    info!(
-        "Step request. Concern {:?}, index {}, request {:?}",
-        main_concern,
-        index,
-        emulator.step(StepRequest {
-            session: step_request.id.clone(),
-            time: step_request.time.as_u64(),
-        })
-    );
+    info!("Step request. Concern {:?}, index {}", main_concern, index);
 
-    return Box::new(web3::futures::future::ok::<(), Error>(()));
+    return Box::new(emulator
+        .step(StepRequest {
+            session: step_request.id.clone(),
+            time: U256::as_u64(&step_request.time.clone()),
+        })
+        .0
+        .map_err(|e| {
+            Error::from(ErrorKind::GrpcError(format!(
+                "could not run emulator: {}",
+                e
+            )))
+        })
+        .then(move |grpc_result| {
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // implement proper error and metadata
+            // handling
+            // but what on earth is going on with grpc?
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            let resulting_step = grpc_result.unwrap().1.wait().unwrap().0;
+            info!(
+                "Step machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
+                main_concern, index, step_request, resulting_step
+            );
+            let store_result_in_archive = add_step(
+                &mut current_archive,
+                step_request.id.clone(),
+                step_request.time,
+                step_request
+            );
+
+            match store_result_in_archive {
+                Ok(r) => return web3::futures::future::ok::<(), _>(()),
+                Err(e) => {
+                    return web3::futures::future::err(e);
+                }
+            };
+        }));
 }
 
 fn process_transaction_request(
@@ -589,14 +618,14 @@ pub fn add_step(
     archive: &mut Archive,
     id: String,
     time: U256,
-    proof: dapp::Proof,
+    log: dapp::StepLog,
 ) {
     let mut samples = archive.entry(id.clone()).or_insert(SamplePair {
         run: SampleRun::new(),
         step: SampleStep::new(),
     });
     //samples.0.insert(time, hash);
-    if let Some(s) = samples.step.insert(time, proof) {
+    if let Some(s) = samples.step.insert(time, log) {
         warn!("Machine {} at time {} recomputed", id, time);
     }
 }

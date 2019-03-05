@@ -10,16 +10,24 @@ use super::transaction::TransactionRequest;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug)]
-pub struct Proof {
-    address: u64,
-    subtree: H256,
-    siblings: Vec<H256>,
-}
-
 pub type SampleRun = HashMap<U256, H256>;
 
-pub type SampleStep = HashMap<U256, Proof>;
+// #[derive(Debug)]
+// pub enum Operation {
+//     Read,
+//     Right,
+// }
+
+// #[derive(Debug)]
+// pub struct Access {
+//     operation: Operation,
+//     address: u64,
+//     value: [u8; 8],
+//     siblings: Vec<H256>,
+// }
+
+pub type StepLog = Vec<emulator::Access>;
+pub type SampleStep = HashMap<U256, StepLog>;
 
 pub struct SamplePair {
     pub run: SampleRun,
@@ -35,7 +43,7 @@ pub struct SampleRequest {
 }
 
 #[derive(Debug)]
-pub struct StepRequest {
+pub struct SampleStepRequest {
     pub id: String,
     pub time: U256,
 }
@@ -43,7 +51,7 @@ pub struct StepRequest {
 #[derive(Debug)]
 pub enum Reaction {
     Request(SampleRequest),
-    Step(StepRequest),
+    Step(SampleStepRequest),
     Transaction(TransactionRequest),
     Idle,
 }
@@ -74,6 +82,8 @@ pub enum FieldType {
     Bytes32Type,
     #[serde(rename = "uint256[5]")]
     U256Array5Type,
+    #[serde(rename = "uint256[6]")]
+    U256Array6Type,
     #[serde(rename = "uint256[]")]
     U256ArrayType,
     #[serde(rename = "bool[]")]
@@ -112,6 +122,14 @@ pub struct U256Array5 {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: [U256; 5],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct U256Array6 {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: [U256; 6],
 }
 
 #[derive(Serialize, Deserialize)]

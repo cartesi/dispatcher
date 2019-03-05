@@ -52,28 +52,37 @@ pub struct MachineSpecification {
     pub flash7: Drive,
 }
 
-pub type Hash = String;
+pub type Hash = [u8; 32];
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Proof {
     pub address: Word,
     pub depth: u32,
-    pub root: Hash,
+    //pub root: Hash,
     pub siblings: Vec<Hash>,
-    pub target: Hash,
+    //pub target: Hash,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operation {
     Read,
     Write,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
+// pub struct Access {
+//     pub operation: Operation,
+//     pub read: Word,
+//     pub written: Word,
+//     pub proof: Proof,
+// }
+
+#[derive(Debug, Clone)]
 pub struct Access {
     pub operation: Operation,
-    pub read: Word,
-    pub written: Word,
+    pub address: Word,
+    pub value_before: Word,
+    pub value_after: Word,
     pub proof: Proof,
 }
 

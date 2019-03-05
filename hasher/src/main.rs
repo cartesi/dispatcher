@@ -42,6 +42,18 @@ fn main() {
         port, fake
     );
 
+    let hasher_emulator_2 = HasherEmulator::new(fake);
+    let mut id = emu::SessionId::new();
+    id.set_id("0000".to_string());
+    let mut request = RunRequest::new();
+    request.set_session(id);
+    request.set_times(vec![0, 0, 0, 0]);
+    let a = hasher_emulator_2
+        .run(grpc::RequestOptions::new(), request)
+        .wait()
+        .unwrap()
+        .1;
+
     loop {
         thread::park();
     }
