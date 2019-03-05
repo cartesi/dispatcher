@@ -1,10 +1,12 @@
 #![feature(proc_macro_hygiene, generators, transpose_result)]
 
 pub mod compute;
+pub mod mm;
 pub mod partition;
 pub mod vg;
 
 extern crate configuration;
+extern crate emulator;
 extern crate env_logger;
 extern crate error;
 
@@ -37,6 +39,7 @@ use serde_json::Value;
 use state::Instance;
 
 pub use compute::Compute;
+pub use mm::MM;
 pub use partition::Partition;
 pub use vg::VG;
 

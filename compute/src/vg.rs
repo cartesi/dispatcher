@@ -1,6 +1,7 @@
 use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Array5, U256Field,
+    AddressField, Bytes32Field, FieldType, String32Field, U256Array5,
+    U256Array6, U256Field,
 };
 use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
@@ -12,7 +13,8 @@ use super::serde::{Deserialize, Deserializer, Serializer};
 use super::serde_json::Value;
 use super::state::Instance;
 use super::transaction::TransactionRequest;
-use super::{Partition, Role};
+use super::{Partition, Role, MM};
+use mm::{MMCtx, MMCtxParsed};
 use partition::{PartitionCtx, PartitionCtxParsed};
 
 pub struct VG();
@@ -31,11 +33,12 @@ struct VGCtxParsed(
     Bytes32Field,  // hashBeforeDivergence
     Bytes32Field,  // hashAfterDivergence
     String32Field, // currentState
-    U256Array5,    // uint values: roundDuration
+    U256Array6,    // uint values: roundDuration
                    //              finalTime
                    //              timeOfLastMove
                    //              mmInstance
                    //              partitionInstance
+                   //              divergenceTime
 );
 
 #[derive(Debug)]
@@ -53,6 +56,7 @@ struct VGCtx {
     time_of_last_move: U256,
     mm_instance: U256,
     partition_instance: U256,
+    divergence_time: U256,
 }
 
 impl From<VGCtxParsed> for VGCtx {
@@ -71,6 +75,7 @@ impl From<VGCtxParsed> for VGCtx {
             time_of_last_move: parsed.8.value[2],
             mm_instance: parsed.8.value[3],
             partition_instance: parsed.8.value[4],
+            divergence_time: parsed.8.value[5],
         }
     }
 }
@@ -124,17 +129,17 @@ impl DApp<()> for VG {
                             )),
                         ))?;
 
-                    let parsed: PartitionCtxParsed =
+                    let partition_parsed: PartitionCtxParsed =
                         serde_json::from_str(&partition_instance.json_data)
                             .chain_err(|| {
                                 format!(
                             "Could not parse partition instance json_data: {}",
                             &instance.json_data
-                        )
+                                )
                             })?;
-                    let ctx: PartitionCtx = parsed.into();
+                    let partition_ctx: PartitionCtx = partition_parsed.into();
 
-                    match ctx.current_state.as_ref() {
+                    match partition_ctx.current_state.as_ref() {
                         "ChallengerWon" | "ClaimerWon" => {
                             // claim victory by partition timeout
                             let request = TransactionRequest {
@@ -199,7 +204,58 @@ impl DApp<()> for VG {
                         ))?;
                     return Partition::react(partition_instance, archive, &());
                 }
-                "WaitMemoryProveValues" => error!("w9sdf982"),
+                "WaitMemoryProveValues" => {
+                    let mm_instance = instance.sub_instances.get(0).ok_or(
+                        Error::from(ErrorKind::InvalidContractState(format!(
+                            "There is no memory manager instance {}",
+                            ctx.current_state
+                        ))),
+                    )?;
+
+                    let mm_parsed: MMCtxParsed =
+                        serde_json::from_str(&mm_instance.json_data)
+                            .chain_err(|| {
+                                format!(
+                                    "Could not parse mm instance json_data: {}",
+                                    &instance.json_data
+                                )
+                            })?;
+                    let mm_ctx: MMCtx = mm_parsed.into();
+
+                    match mm_ctx.current_state.as_ref() {
+                        "WaitingProofs" => {
+                            return MM::react(
+                                mm_instance,
+                                archive,
+                                &ctx.divergence_time,
+                            );
+                        }
+                        "WaitingReplay" => {
+                            // start the machine run challenge
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "settleVerificationGame".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        "FinishedReplay" => {
+                            warn!("Strange state for vg and mm");
+                            return Ok(Reaction::Idle);
+                        }
+                        _ => {
+                            warn!("Unknown state for vg and mm");
+                            return Ok(Reaction::Idle);
+                        }
+                    }
+                }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
                         format!("Unknown current state {}", ctx.current_state),

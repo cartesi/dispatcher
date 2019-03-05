@@ -19,5 +19,6 @@ serde = "1.0.0"
 serde_derive = "1.0.0"
 state = { path = "../state" }
 dispatcher = { path = "../dispatcher" }
+emulator = { path = "../emulator" } 
 hex = "0.3.2"
 time = "0.1"

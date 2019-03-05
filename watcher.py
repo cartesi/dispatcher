@@ -105,8 +105,6 @@ class InstanceModel(object):
 
 instances = InstanceModel()
 
-print(instances.get_instance(5)["notes"])
-
 #sys.exit(0)
 
 class ListView(Frame):
