@@ -1,9 +1,8 @@
-pub mod emu;
-pub mod emu_grpc;
 pub mod emulator;
 pub mod types;
 
 extern crate configuration;
+extern crate emulator_interface;
 extern crate env_logger;
 extern crate error;
 extern crate grpc;

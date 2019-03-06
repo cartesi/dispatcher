@@ -27,9 +27,8 @@ use std::str;
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
 use emulator::{
-    Access, Backing, Drive, DriveId, DriveRequest, Hash, InitRequest,
-    MachineSpecification, Operation, Ram, ReadRequest, ReadResult, RunRequest,
-    SessionId, StepRequest, StepResult, Word,
+    Access, AccessOperation, SessionRunRequest, SessionStepRequest,
+    SessionStepResult,
 };
 pub use error::*;
 use ethabi::Token;
@@ -431,13 +430,17 @@ fn execute_reaction<T: DApp<()>>(
                             current_archive_clone,
                         )
                     }
-                    Reaction::Step(step_request) => process_step_request(
-                        main_concern,
-                        index,
-                        step_request,
-                        &emulator,
-                        &mut current_archive,
-                    ),
+                    Reaction::Step(step_request) => {
+                        let current_archive_clone =
+                            assets.current_archive.clone();
+                        process_step_request(
+                            main_concern,
+                            index,
+                            step_request,
+                            &emulator,
+                            current_archive_clone,
+                        )
+                    }
                     Reaction::Transaction(transaction_request) => {
                         process_transaction_request(
                             main_concern,
@@ -463,11 +466,10 @@ fn process_run_request(
     current_archive_arc: Arc<Mutex<Archive>>,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
     return Box::new(emulator
-        .run(RunRequest {
-            session: run_request.id.clone(),
+        .run(SessionRunRequest {
+            session_id: run_request.id.clone(),
             times: run_request.times.clone().iter().map(U256::as_u64).collect(),
         })
-        .0
         .map_err(|e| {
             Error::from(ErrorKind::GrpcError(format!(
                 "could not run emulator: {}",
@@ -480,7 +482,7 @@ fn process_run_request(
             // handling
             // but what on earth is going on with grpc?
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            let resulting_hash = grpc_result.unwrap().1.wait().unwrap().0;
+            let resulting_hash = grpc_result.unwrap();
             info!(
                 "Run machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
                 main_concern, index, run_request, resulting_hash
@@ -491,25 +493,15 @@ fn process_run_request(
                 .into_iter()
                 .zip(resulting_hash.hashes.clone().iter())
                 .map(|(time, hash)| -> Result<()> {
-                    match hash
-                        .hash
-                        .clone()
-                        .trim_start_matches("0x")
-                        .parse::<H256>()
-                    {
-                        Ok(sent_hash) => {
-                            let mut current_archive =
-                                current_archive_arc.lock().unwrap();
-                            add_run(
-                                &mut current_archive,
-                                run_request.id.clone(),
-                                time,
-                                sent_hash,
-                            );
-                            Ok(())
-                        }
-                        Err(e) => Err(e.into()),
-                    }
+                    let mut current_archive =
+                        current_archive_arc.lock().unwrap();
+                    add_run(
+                        &mut current_archive,
+                        run_request.id.clone(),
+                        time,
+                        hash.clone(),
+                    );
+                    Ok(())
                 })
                 .collect();
             match store_result_in_archive.chain_err(|| {
@@ -531,16 +523,15 @@ fn process_step_request(
     index: usize,
     step_request: SampleStepRequest,
     emulator: &EmulatorManager,
-    current_archive: &Archive,
+    current_archive_arc: Arc<Mutex<Archive>>,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
     info!("Step request. Concern {:?}, index {}", main_concern, index);
 
     return Box::new(emulator
-        .step(StepRequest {
-            session: step_request.id.clone(),
+        .step(SessionStepRequest {
+            session_id: step_request.id.clone(),
             time: U256::as_u64(&step_request.time.clone()),
         })
-        .0
         .map_err(|e| {
             Error::from(ErrorKind::GrpcError(format!(
                 "could not run emulator: {}",
@@ -548,12 +539,13 @@ fn process_step_request(
             )))
         })
         .then(move |grpc_result| {
+    let mut current_archive = current_archive_arc.lock().unwrap();
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // implement proper error and metadata
             // handling
             // but what on earth is going on with grpc?
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            let resulting_step = grpc_result.unwrap().1.wait().unwrap().0;
+            let resulting_step = grpc_result.unwrap();
             info!(
                 "Step machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
                 main_concern, index, step_request, resulting_step
@@ -562,15 +554,10 @@ fn process_step_request(
                 &mut current_archive,
                 step_request.id.clone(),
                 step_request.time,
-                step_request
+                resulting_step.log
+                    .to_vec()
             );
-
-            match store_result_in_archive {
-                Ok(r) => return web3::futures::future::ok::<(), _>(()),
-                Err(e) => {
-                    return web3::futures::future::err(e);
-                }
-            };
+            return web3::futures::future::ok::<(), _>(());
         }));
 }
 

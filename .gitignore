@@ -3,6 +3,8 @@
 key.txt
 *.pdf
 *.html
-/hasher/src/emu*
-/emulator/src/emu*
+/hasher/src/cartesi_base*
+/hasher/src/manager*
+/emulator_interface/src/cartesi_base*
+/emulator_interface/src/manager*
 /vir/*

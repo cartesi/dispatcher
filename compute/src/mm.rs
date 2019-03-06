@@ -7,7 +7,8 @@ use super::dispatcher::{
 use super::dispatcher::{
     Archive, DApp, Reaction, SampleRequest, SampleStepRequest,
 };
-use super::emulator::{emu, Operation};
+use super::emulator::AccessOperation;
+use super::emulator_interface::manager;
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
@@ -122,12 +123,12 @@ impl DApp<U256> for MM {
                             (&step_log[ctx.history_length.as_usize()]).clone();
                         let siblings = access
                             .proof
-                            .siblings
+                            .sibling_hashes
                             .into_iter()
-                            .map(|array| Token::Uint(U256::from(array)))
+                            .map(|hash| Token::Uint(U256::from(hash)))
                             .collect();
                         match access.operation {
-                            Operation::Read => {
+                            AccessOperation::Read => {
                                 let request = TransactionRequest {
                                     concern: instance.concern.clone(),
                                     value: U256::from(0),
@@ -139,18 +140,12 @@ impl DApp<U256> for MM {
                                     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                     data: vec![
                                         Token::Uint(instance.index),
+                                        Token::Uint(U256::from(access.address)),
                                         Token::Uint(U256::from(
-                                            u64::from_be_bytes(access.address),
+                                            access.value_read,
                                         )),
                                         Token::Uint(U256::from(
-                                            u64::from_be_bytes(
-                                                access.value_before,
-                                            ),
-                                        )),
-                                        Token::Uint(U256::from(
-                                            u64::from_be_bytes(
-                                                access.value_after,
-                                            ),
+                                            access.value_written,
                                         )),
                                         Token::Array(siblings),
                                     ],
@@ -158,7 +153,7 @@ impl DApp<U256> for MM {
                                 };
                                 return Ok(Reaction::Transaction(request));
                             }
-                            Operation::Write => {
+                            AccessOperation::Write => {
                                 let request = TransactionRequest {
                                     concern: instance.concern.clone(),
                                     value: U256::from(0),
@@ -170,13 +165,9 @@ impl DApp<U256> for MM {
                                     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                     data: vec![
                                         Token::Uint(instance.index),
+                                        Token::Uint(U256::from(access.address)),
                                         Token::Uint(U256::from(
-                                            u64::from_be_bytes(access.address),
-                                        )),
-                                        Token::Uint(U256::from(
-                                            u64::from_be_bytes(
-                                                access.value_before,
-                                            ),
+                                            access.value_read,
                                         )),
                                         Token::Array(siblings),
                                     ],

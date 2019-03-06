@@ -6,14 +6,16 @@ extern crate grpc;
 extern crate log;
 extern crate protobuf;
 
-pub mod emu;
-pub mod emu_grpc;
+pub mod cartesi_base;
 pub mod hasher;
+pub mod manager;
+pub mod manager_grpc;
 
-use emu::*;
-use emu_grpc::*;
+use cartesi_base::*;
 use grpc::SingleResponse;
 use hasher::HasherEmulator;
+use manager::*;
+use manager_grpc::*;
 use std::env;
 use std::thread;
 
@@ -34,7 +36,7 @@ fn main() {
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
     let hasher_emulator = HasherEmulator::new(fake);
-    server.add_service(EmulatorServer::new_service_def(hasher_emulator));
+    server.add_service(MachineManagerServer::new_service_def(hasher_emulator));
     server.http.set_cpu_pool_threads(1);
     let _server = server.build().expect("server");
     info!(
@@ -43,13 +45,11 @@ fn main() {
     );
 
     let hasher_emulator_2 = HasherEmulator::new(fake);
-    let mut id = emu::SessionId::new();
-    id.set_id("0000".to_string());
-    let mut request = RunRequest::new();
-    request.set_session(id);
+    let mut request = SessionRunRequest::new();
+    request.set_session_id("Bla".to_string());
     request.set_times(vec![0, 0, 0, 0]);
     let a = hasher_emulator_2
-        .run(grpc::RequestOptions::new(), request)
+        .session_run(grpc::RequestOptions::new(), request)
         .wait()
         .unwrap()
         .1;
