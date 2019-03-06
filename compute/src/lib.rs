@@ -7,6 +7,7 @@ pub mod vg;
 
 extern crate configuration;
 extern crate emulator;
+extern crate emulator_interface;
 extern crate env_logger;
 extern crate error;
 

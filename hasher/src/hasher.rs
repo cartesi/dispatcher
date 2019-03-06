@@ -8,10 +8,11 @@ extern crate rustc_hex;
 
 use self::ethereum_types::{H256, U256};
 use self::rustc_hex::{FromHex, ToHex};
-use emu::*;
-use emu_grpc::*;
+use cartesi_base::*;
 use futures::Future;
 use grpc::SingleResponse;
+use manager::*;
+use manager_grpc::*;
 
 pub struct HasherEmulator {
     fake: bool,
@@ -24,105 +25,83 @@ impl HasherEmulator {
     }
 }
 
-impl Emulator for HasherEmulator {
-    fn init(
+impl MachineManager for HasherEmulator {
+    fn new_session(
         &self,
         _m: grpc::RequestOptions,
-        _: InitRequest,
+        _: NewSessionRequest,
     ) -> SingleResponse<Hash> {
         let mut r = Hash::new();
-        r.set_hash("Not implemented!".into());
+        r.set_content(vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
         grpc::SingleResponse::completed(r)
     }
-    fn run(
+    fn session_run(
         &self,
         _m: grpc::RequestOptions,
-        request: RunRequest,
-    ) -> SingleResponse<RunResult> {
+        request: SessionRunRequest,
+    ) -> SingleResponse<SessionRunResult> {
         let v: Vec<Hash> = calculate_hasher_vector(&request.times, self.fake);
         info!(
             "Session {:?} received {:?} and returned {:?}",
-            request.session, request.times, v
+            request.session_id, request.times, v
         );
         let repeated_field = protobuf::RepeatedField::from_vec(v);
-        let mut r = RunResult::new();
+        let mut r = SessionRunResult::new();
         r.set_hashes(repeated_field);
         grpc::SingleResponse::completed(r)
     }
-    fn step(
+    fn session_step(
         &self,
         _m: grpc::RequestOptions,
-        request: StepRequest,
-    ) -> SingleResponse<StepResult> {
+        request: SessionStepRequest,
+    ) -> SingleResponse<SessionStepResult> {
         info!(
             "Session {:?} received {:?} and returned a proof",
-            request.session, request.time
+            request.session_id, request.time
         );
-        let mut address: Word = Word::new();
-        address.set_word(0);
-        let mut value: Word = Word::new();
-        value.set_word(request.time);
-        let mut increased_value: Word = Word::new();
-        increased_value.set_word(request.time + 1);
+        let value: U256 = U256::from(request.time);
+        let increased_value: U256 = U256::from(request.time + 1);
 
         let siblings: Vec<Hash> = calculate_proof(request.time, self.fake)
             .into_iter()
             .map(|hash| {
-                let mut result: Hash = Hash::new();
-                result.set_hash(hash.to_hex());
+                let mut result = Hash::new();
+                result.set_content(hash.0.to_vec());
                 result
             })
             .collect();
 
         let mut proof: Proof = Proof::new();
-        proof.set_address(address.clone());
-        proof.set_depth(61);
-        proof.set_siblings(protobuf::RepeatedField::from_vec(siblings));
+        proof.set_address(0);
+        proof.set_log2_size(3);
+        proof.set_sibling_hashes(protobuf::RepeatedField::from_vec(siblings));
 
         let mut access_read: Access = Access::new();
-        access_read.set_operation(Access_Operation::READ);
-        access_read.set_address(address.clone());
-        access_read.set_value_before(value.clone());
-        access_read.set_value_after(value.clone());
+        access_read.set_operation(AccessOperation::READ);
+        access_read.set_address(0);
+        access_read.set_read(value.clone().as_u64());
+        access_read.set_written(value.clone().as_u64());
         access_read.set_proof(proof.clone());
 
         let mut access_write: Access = Access::new();
-        access_write.set_operation(Access_Operation::WRITE);
-        access_write.set_address(address);
-        access_write.set_value_before(value);
-        access_write.set_value_after(increased_value);
+        access_write.set_operation(AccessOperation::WRITE);
+        access_write.set_address(0);
+        access_write.set_read(value.as_u64());
+        access_write.set_written(increased_value.as_u64());
         access_write.set_proof(proof);
 
-        //           proof.into_iter().map(|hash| hash).collect();
-        let mut r = StepResult::new();
-        r.set_response(protobuf::RepeatedField::from_vec(vec![
+        let mut access_log: AccessLog = AccessLog::new();
+        access_log.set_accesses(protobuf::RepeatedField::from_vec(vec![
             access_read,
             access_write,
         ]));
-        grpc::SingleResponse::completed(r)
-    }
-    fn read(
-        &self,
-        _m: grpc::RequestOptions,
-        _: ReadRequest,
-    ) -> SingleResponse<ReadResult> {
-        let r = ReadResult::new();
-        grpc::SingleResponse::completed(r)
-    }
-    fn prove_drive(
-        &self,
-        _m: grpc::RequestOptions,
-        _: DriveRequest,
-    ) -> SingleResponse<Proof> {
-        let r = Proof::new();
-        grpc::SingleResponse::completed(r)
-    }
-    fn get_backing(
-        &self,
-        _m: grpc::RequestOptions,
-        _: DriveRequest,
-    ) -> SingleResponse<Backing> {
-        let r = Backing::new();
+
+        //           proof.into_iter().map(|hash| hash).collect();
+        let mut r = SessionStepResult::new();
+        r.set_log(access_log);
         grpc::SingleResponse::completed(r)
     }
 }
@@ -152,7 +131,7 @@ fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
             }
             let hex_answer: String = running_hash.to_hex();
             warn!("{}", hex_answer);
-            returned_hash.set_hash(format!("0x{}", hex_answer));
+            returned_hash.set_content(hex_answer.as_bytes().to_vec());
             returned_hash.clone()
         })
         .collect();

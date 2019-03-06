@@ -1,7 +1,7 @@
 [package]
 description = "Cartesi Transaction Manager"
 homepage = "https://cartesi.io"
-name = "emulator"
+name = "emulator_interface"
 version = "0.1.0"
 authors = ["Cartesi Team"]
 
@@ -10,11 +10,13 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
-emulator_interface = { path = "../emulator_interface" }
 httpbis = "~0.7"
 protobuf = "2"
 grpc = "~0.6"
 protoc-rust-grpc = { git = "https://github.com/stepancheg/grpc-rust" }
 rustc-hex = "2.0.1"
 ethereum-types = "0.4"
-futures = "0.1.25"
+
+[[bin]]
+name = "build-emulator-interface"
+path = "src/build.rs"

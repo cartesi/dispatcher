@@ -1,3 +1,6 @@
 [submodule "interfaces"]
 	path = interfaces
 	url = git@github.com:cartesi/interfaces.git
+[submodule "cartesi-grpc"]
+	path = cartesi-grpc
+	url = git@github.com:cartesi/cartesi-grpc.git

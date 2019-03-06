@@ -4,8 +4,11 @@ fn main() {
     //match
     protoc_rust_grpc::run(protoc_rust_grpc::Args {
         out_dir: "src",
-        includes: &["../interfaces"],
-        input: &["../interfaces/emu.proto"],
+        includes: &["../cartesi-grpc"],
+        input: &[
+            "../cartesi-grpc/cartesi-base.proto",
+            "../cartesi-grpc/manager.proto",
+        ],
         rust_protobuf: true, // generate protobuf messages, not just services
         ..Default::default()
     })
