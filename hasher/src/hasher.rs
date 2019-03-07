@@ -65,7 +65,7 @@ impl MachineManager for HasherEmulator {
         let value: U256 = U256::from(request.time);
         let increased_value: U256 = U256::from(request.time + 1);
 
-        let siblings: Vec<Hash> = calculate_proof(request.time, self.fake)
+        let siblings: Vec<Hash> = calculate_proof(request.time)
             .into_iter()
             .map(|hash| {
                 let mut result = Hash::new();
@@ -107,9 +107,8 @@ impl MachineManager for HasherEmulator {
 }
 
 fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
-    let binary_0 = H256::from(0);
     let mut uncles: Vec<H256> = Vec::new();
-    uncles.push(binary_0);
+    uncles.push(calculate_hash_u64(0));
     for i in 1..61 {
         let previous = uncles[i - 1].clone();
         uncles.push(calculate_hash_pair(previous, previous));
@@ -117,31 +116,30 @@ fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
     return times
         .into_iter()
         .map(move |time| {
-            let mut returned_hash = Hash::new();
             let u: u64;
             if fake {
                 u = std::cmp::min(*time, 17);
             } else {
                 u = *time;
             }
-            let binary_u = H256::from(u);
-            let mut running_hash = calculate_hash(binary_u);
+            let mut running_hash = calculate_hash_u64(u);
             for i in 0..61 {
                 running_hash = calculate_hash_pair(running_hash, uncles[i]);
             }
-            let hex_answer: String = running_hash.to_hex();
-            warn!("{}", hex_answer);
-            returned_hash.set_content(hex_answer.as_bytes().to_vec());
+            //warn!("{}", running_hash.to_hex());
+            let mut returned_hash = Hash::new();
+            returned_hash.set_content(running_hash.to_vec());
             returned_hash.clone()
         })
         .collect();
 }
 
-fn calculate_proof(time: u64, fake: bool) -> Vec<H256> {
-    let new_time = if ((time == 17) & fake) { 16 } else { time };
-    let binary_0 = H256::from(0);
+fn calculate_proof(time: u64) -> Vec<H256> {
     let mut uncles: Vec<H256> = Vec::new();
-    uncles.push(binary_0);
+    uncles.push(calculate_hash_u64(0));
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // replace 62 by 61
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     for i in 1..61 {
         let previous = uncles[i - 1].clone();
         uncles.push(calculate_hash_pair(previous, previous));
@@ -149,18 +147,22 @@ fn calculate_proof(time: u64, fake: bool) -> Vec<H256> {
     return uncles;
 }
 
+fn calculate_hash_u64(data: u64) -> H256 {
+    let bytes: [u8; 8] = data.to_be_bytes();
+    return keccak_hash::keccak(&bytes);
+}
+
 fn calculate_hash(data: H256) -> H256 {
-    let hex: String = data.to_hex();
-    let bytes: Vec<u8> = hex.from_hex().unwrap();
-    let hex_hash: String = keccak_hash::keccak(&bytes).to_hex();
-    return hex_hash.parse().unwrap();
+    let bytes: [u8; 32] = data.into();
+    return keccak_hash::keccak(&bytes);
 }
 
 fn calculate_hash_pair(data_1: H256, data_2: H256) -> H256 {
-    let hex_1: String = data_1.to_hex();
-    let hex_2: String = data_2.to_hex();
-    let hex = format!("{}{}", hex_1, hex_2);
-    let bytes: Vec<u8> = hex.from_hex().unwrap();
-    let hex_hash: String = keccak_hash::keccak(&bytes).to_hex();
-    return hex_hash.parse().unwrap();
+    let mut bytes_1: [u8; 32] = data_1.into();
+    let mut bytes_2: [u8; 32] = data_2.into();
+    let mut vec_1: Vec<u8> = bytes_1.into_iter().map(|&a| a).collect();
+    let mut vec_2: Vec<u8> = bytes_2.into_iter().map(|&a| a).collect();
+    vec_1.append(&mut vec_2);
+    //error!("size of vector is {}", vec_1.len());
+    return keccak_hash::keccak(&vec_1.as_slice());
 }

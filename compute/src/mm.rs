@@ -125,10 +125,32 @@ impl DApp<U256> for MM {
                             .proof
                             .sibling_hashes
                             .into_iter()
-                            .map(|hash| Token::Uint(U256::from(hash)))
+                            .map(|hash| Token::FixedBytes(hash.0.to_vec()))
                             .collect();
                         match access.operation {
                             AccessOperation::Read => {
+                                let request = TransactionRequest {
+                                    concern: instance.concern.clone(),
+                                    value: U256::from(0),
+                                    function: "proveRead".into(),
+                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    // improve these types by letting the
+                                    // dapp submit ethereum_types and convert
+                                    // them inside the transaction manager
+                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    data: vec![
+                                        Token::Uint(instance.index),
+                                        Token::Uint(U256::from(access.address)),
+                                        Token::Uint(U256::from(
+                                            access.value_read,
+                                        )),
+                                        Token::Array(siblings),
+                                    ],
+                                    strategy: transaction::Strategy::Simplest,
+                                };
+                                return Ok(Reaction::Transaction(request));
+                            }
+                            AccessOperation::Write => {
                                 let request = TransactionRequest {
                                     concern: instance.concern.clone(),
                                     value: U256::from(0),
@@ -146,28 +168,6 @@ impl DApp<U256> for MM {
                                         )),
                                         Token::Uint(U256::from(
                                             access.value_written,
-                                        )),
-                                        Token::Array(siblings),
-                                    ],
-                                    strategy: transaction::Strategy::Simplest,
-                                };
-                                return Ok(Reaction::Transaction(request));
-                            }
-                            AccessOperation::Write => {
-                                let request = TransactionRequest {
-                                    concern: instance.concern.clone(),
-                                    value: U256::from(0),
-                                    function: "proveRead".into(),
-                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    // improve these types by letting the
-                                    // dapp submit ethereum_types and convert
-                                    // them inside the transaction manager
-                                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    data: vec![
-                                        Token::Uint(instance.index),
-                                        Token::Uint(U256::from(access.address)),
-                                        Token::Uint(U256::from(
-                                            access.value_read,
                                         )),
                                         Token::Array(siblings),
                                     ],

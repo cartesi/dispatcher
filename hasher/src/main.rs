@@ -45,11 +45,11 @@ fn main() {
     );
 
     let hasher_emulator_2 = HasherEmulator::new(fake);
-    let mut request = SessionRunRequest::new();
+    let mut request = SessionStepRequest::new();
     request.set_session_id("Bla".to_string());
-    request.set_times(vec![0, 0, 0, 0]);
+    request.set_time(17);
     let a = hasher_emulator_2
-        .session_run(grpc::RequestOptions::new(), request)
+        .session_step(grpc::RequestOptions::new(), request)
         .wait()
         .unwrap()
         .1;
