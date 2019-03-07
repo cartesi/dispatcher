@@ -49,9 +49,9 @@ impl From<emulator_interface::manager::SessionRunResult> for SessionRunResult {
 pub struct Proof {
     pub address: u64,
     pub log2_size: u32,
-    pub target_hash: H256,
+    // pub target_hash: H256,
     pub sibling_hashes: Vec<H256>,
-    pub root_hash: H256,
+    // pub root_hash: H256,
 }
 
 #[derive(Debug, Clone)]
@@ -74,26 +74,26 @@ impl From<cartesi_base::Proof> for Proof {
         Proof {
             address: proof.address,
             log2_size: proof.log2_size,
-            target_hash: H256::from_slice(
-                &proof
-                    .target_hash
-                    .into_option()
-                    .expect("target hash not found")
-                    .content,
-            ),
+            // target_hash: H256::from_slice(
+            //     &proof
+            //         .target_hash
+            //         .into_option()
+            //         .expect("target hash not found")
+            //         .content,
+            // ),
             sibling_hashes: proof
                 .sibling_hashes
                 .into_vec()
                 .into_iter()
                 .map(|hash| H256::from_slice(&hash.content))
                 .collect(),
-            root_hash: H256::from_slice(
-                &proof
-                    .root_hash
-                    .into_option()
-                    .expect("root hash not found")
-                    .content,
-            ),
+            // root_hash: H256::from_slice(
+            //     &proof
+            //         .root_hash
+            //         .into_option()
+            //         .expect("root hash not found")
+            //         .content,
+            // ),
         }
     }
 }
