@@ -1,8 +1,6 @@
 // error-chain recursion
 #![recursion_limit = "1024"]
 
-#[macro_use]
-extern crate log;
 extern crate compute;
 extern crate dispatcher;
 extern crate env_logger;
@@ -11,7 +9,6 @@ extern crate utils;
 
 use compute::Compute;
 use dispatcher::Dispatcher;
-use error::*;
 use utils::print_error;
 
 fn main() {

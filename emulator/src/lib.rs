@@ -9,7 +9,4 @@ extern crate grpc;
 extern crate httpbis;
 extern crate protobuf;
 
-#[macro_use]
-extern crate log;
-
 pub use emulator::*;

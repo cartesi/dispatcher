@@ -7,9 +7,7 @@ extern crate protobuf;
 extern crate rustc_hex;
 
 use self::ethereum_types::{H256, U256};
-use self::rustc_hex::{FromHex, ToHex};
 use cartesi_base::*;
-use futures::Future;
 use grpc::SingleResponse;
 use manager::*;
 use manager_grpc::*;
@@ -65,7 +63,7 @@ impl MachineManager for HasherEmulator {
         let value: U256 = U256::from(request.time);
         let increased_value: U256 = U256::from(request.time + 1);
 
-        let siblings: Vec<Hash> = calculate_proof(request.time)
+        let siblings: Vec<Hash> = calculate_proof()
             .into_iter()
             .map(|hash| {
                 let mut result = Hash::new();
@@ -134,7 +132,7 @@ fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
         .collect();
 }
 
-fn calculate_proof(time: u64) -> Vec<H256> {
+fn calculate_proof() -> Vec<H256> {
     let mut uncles: Vec<H256> = Vec::new();
     uncles.push(calculate_hash_u64(0));
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -152,14 +150,9 @@ fn calculate_hash_u64(data: u64) -> H256 {
     return keccak_hash::keccak(&bytes);
 }
 
-fn calculate_hash(data: H256) -> H256 {
-    let bytes: [u8; 32] = data.into();
-    return keccak_hash::keccak(&bytes);
-}
-
 fn calculate_hash_pair(data_1: H256, data_2: H256) -> H256 {
-    let mut bytes_1: [u8; 32] = data_1.into();
-    let mut bytes_2: [u8; 32] = data_2.into();
+    let bytes_1: [u8; 32] = data_1.into();
+    let bytes_2: [u8; 32] = data_2.into();
     let mut vec_1: Vec<u8> = bytes_1.into_iter().map(|&a| a).collect();
     let mut vec_2: Vec<u8> = bytes_2.into_iter().map(|&a| a).collect();
     vec_1.append(&mut vec_2);

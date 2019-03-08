@@ -1,24 +1,17 @@
 use super::build_machine_id;
-use super::configuration::{Concern, Configuration};
-use super::dispatcher::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
-};
+use super::configuration::Concern;
+use super::dispatcher::{AddressField, Bytes32Field, String32Field, U256Field};
 use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
-use super::serde::de::Error as SerdeError;
-use super::serde::{Deserialize, Deserializer, Serializer};
-use super::serde_json::Value;
-use super::state::Instance;
 use super::transaction;
 use super::transaction::TransactionRequest;
 use super::{Role, VG};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use std::time::{SystemTime, UNIX_EPOCH};
-use time::Duration;
 
 pub struct Compute();
 
@@ -256,8 +249,6 @@ impl DApp<()> for Compute {
                 }
             },
         }
-
-        return Ok(Reaction::Idle);
     }
 }
 
@@ -272,8 +263,8 @@ fn win_by_deadline_or_idle(
         .as_secs();
 
     // if other party missed the deadline
-    if (current_time
-        > ctx.time_of_last_move.as_u64() + ctx.round_duration.as_u64())
+    if current_time
+        > ctx.time_of_last_move.as_u64() + ctx.round_duration.as_u64()
     {
         let request = TransactionRequest {
             concern: concern.clone(),

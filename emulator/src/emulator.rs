@@ -5,7 +5,7 @@ use configuration::Configuration;
 use emulator_interface::manager;
 use emulator_interface::manager_grpc::*;
 use error::*;
-use grpc::{ClientStub, ClientStubExt, RequestOptions, SingleResponse};
+use grpc::{ClientStubExt, RequestOptions};
 
 pub use types::{
     Access, AccessOperation, Proof, SessionRunRequest, SessionRunResult,
@@ -13,7 +13,6 @@ pub use types::{
 };
 
 pub struct EmulatorManager {
-    config: Configuration,
     client: MachineManagerClient,
 }
 
@@ -29,10 +28,7 @@ impl EmulatorManager {
         )
         .unwrap();
 
-        Ok(EmulatorManager {
-            config: config,
-            client: client,
-        })
+        Ok(EmulatorManager { client: client })
     }
 
     // pub fn new_session(&self, _: NewSessionRequest) -> (Hash) {
