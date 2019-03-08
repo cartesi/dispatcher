@@ -1,7 +1,7 @@
 use super::build_machine_id;
 use super::configuration::Concern;
 use super::dispatcher::{AddressField, Bytes32Field, String32Field, U256Field};
-use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
+use super::dispatcher::{Archive, DApp, Reaction, SessionRunRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
@@ -143,13 +143,10 @@ impl DApp<()> for Compute {
                         }
                     };
                     // final hash has not been calculated yet, request it
-                    let sample_points: HashSet<U256> =
-                        [U256::from(0), ctx.final_time]
-                            .iter()
-                            .cloned()
-                            .collect();
-                    return Ok(Reaction::Request(SampleRequest {
-                        id: id,
+                    let sample_points: Vec<u64> =
+                        vec![0, ctx.final_time.as_u64()];
+                    return Ok(Reaction::Request(SessionRunRequest {
+                        session_id: id,
                         times: sample_points,
                     }));
                 }
@@ -215,13 +212,10 @@ impl DApp<()> for Compute {
                         }
                     };
                     // final hash has not been calculated yet, request it
-                    let sample_points: HashSet<U256> =
-                        [U256::from(0), ctx.final_time]
-                            .iter()
-                            .cloned()
-                            .collect();
-                    return Ok(Reaction::Request(SampleRequest {
-                        id: id,
+                    let sample_points: Vec<u64> =
+                        vec![0, ctx.final_time.as_u64()];
+                    return Ok(Reaction::Request(SessionRunRequest {
+                        session_id: id,
                         times: sample_points,
                     }));
                 }

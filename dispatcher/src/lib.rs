@@ -26,7 +26,7 @@ use std::str;
 
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
-use emulator::{SessionRunRequest, SessionStepRequest};
+pub use emulator::{SessionRunRequest, SessionStepRequest};
 pub use error::*;
 use ethereum_types::{H256, U256};
 use hyper::service::service_fn;
@@ -45,9 +45,8 @@ use web3::futures::{stream, Future, Stream};
 
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
-    FieldType, Reaction, SamplePair, SampleRequest, SampleRun, SampleStep,
-    SampleStepRequest, String32Field, U256Array, U256Array5, U256Array6,
-    U256Field,
+    FieldType, Reaction, SamplePair, SampleRun, SampleStep, String32Field,
+    U256Array, U256Array5, U256Array6, U256Field,
 };
 
 pub struct Dispatcher {
@@ -447,14 +446,14 @@ fn execute_reaction<T: DApp<()>>(
 fn process_run_request(
     main_concern: Concern,
     index: usize,
-    run_request: SampleRequest,
+    run_request: SessionRunRequest,
     emulator: &EmulatorManager,
     current_archive_arc: Arc<Mutex<Archive>>,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
     return Box::new(emulator
         .run(SessionRunRequest {
-            session_id: run_request.id.clone(),
-            times: run_request.times.clone().iter().map(U256::as_u64).collect(),
+            session_id: run_request.session_id.clone(),
+            times: run_request.times.clone(),
         })
         .map_err(|e| {
             Error::from(ErrorKind::GrpcError(format!(
@@ -483,8 +482,8 @@ fn process_run_request(
                         current_archive_arc.lock().unwrap();
                     add_run(
                         &mut current_archive,
-                        run_request.id.clone(),
-                        time,
+                        run_request.session_id.clone(),
+                        U256::from(time),
                         hash.clone(),
                     );
                     Ok(())
@@ -507,7 +506,7 @@ fn process_run_request(
 fn process_step_request(
     main_concern: Concern,
     index: usize,
-    step_request: SampleStepRequest,
+    step_request: SessionStepRequest,
     emulator: &EmulatorManager,
     current_archive_arc: Arc<Mutex<Archive>>,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
@@ -515,8 +514,8 @@ fn process_step_request(
 
     return Box::new(emulator
         .step(SessionStepRequest {
-            session_id: step_request.id.clone(),
-            time: U256::as_u64(&step_request.time.clone()),
+            session_id: step_request.session_id.clone(),
+            time: step_request.time,
         })
         .map_err(|e| {
             Error::from(ErrorKind::GrpcError(format!(
@@ -538,8 +537,8 @@ fn process_step_request(
             );
             add_step(
                 &mut current_archive,
-                step_request.id.clone(),
-                step_request.time,
+                step_request.session_id.clone(),
+                U256::from(step_request.time),
                 resulting_step.log
                     .to_vec()
             );
