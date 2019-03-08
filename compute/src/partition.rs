@@ -1,18 +1,12 @@
 use super::build_machine_id;
-use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
-    AddressField, BoolArray, Bytes32Array, Bytes32Field, FieldType,
-    String32Field, U256Array, U256Array5, U256Field,
+    AddressField, BoolArray, Bytes32Array, String32Field, U256Array, U256Array5,
 };
 use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
-use super::serde::de::Error as SerdeError;
-use super::serde::{Deserialize, Deserializer, Serializer};
-use super::serde_json::Value;
-use super::state::Instance;
 use super::transaction::TransactionRequest;
 use super::Role;
 
@@ -263,7 +257,7 @@ impl DApp<()> for Partition {
                             };
 
                             if hash != *claimed_hash {
-                                if (next_time.as_u64() - time.as_u64() > 1) {
+                                if next_time.as_u64() - time.as_u64() > 1 {
                                     // submit the relevant query
                                     let request = TransactionRequest {
                                         concern: instance.concern.clone(),
@@ -330,7 +324,5 @@ impl DApp<()> for Partition {
                 }
             },
         }
-
-        return Ok(Reaction::Idle);
     }
 }

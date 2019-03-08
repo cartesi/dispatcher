@@ -1,26 +1,12 @@
 use super::build_machine_id;
-use super::configuration::{Concern, Configuration};
-use super::dispatcher::{
-    AddressField, BoolArray, Bytes32Array, Bytes32Field, FieldType,
-    String32Field, U256Array, U256Array5, U256Field,
-};
-use super::dispatcher::{
-    Archive, DApp, Reaction, SampleRequest, SampleStepRequest,
-};
+use super::dispatcher::{AddressField, Bytes32Field, String32Field, U256Field};
+use super::dispatcher::{Archive, DApp, Reaction, SampleStepRequest};
 use super::emulator::AccessOperation;
-use super::emulator_interface::manager;
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
-use super::serde::de::Error as SerdeError;
-use super::serde::{Deserialize, Deserializer, Serializer};
-use super::serde_json::Value;
-use super::state::Instance;
 use super::transaction::TransactionRequest;
-use super::Role;
-
-use std::collections::HashSet;
 
 pub struct MM();
 
@@ -179,7 +165,6 @@ impl DApp<U256> for MM {
                     }
                 };
                 // divergence proof has not been calculated yet, request it
-                let sample_time: U256 = U256::from(*divergence_time);
                 return Ok(Reaction::Step(SampleStepRequest {
                     id: id,
                     time: divergence_time.clone(),

@@ -25,19 +25,7 @@ extern crate state;
 extern crate time;
 extern crate transaction;
 
-use configuration::{Concern, Configuration};
-use dispatcher::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Field,
-};
-use dispatcher::{Archive, DApp, Reaction, SampleRequest};
-use error::Result;
-use error::*;
-use ethabi::Token;
-use ethereum_types::{Address, H256, U256};
-use serde::de::Error as SerdeError;
-use serde::{Deserialize, Deserializer, Serializer};
-use serde_json::Value;
-use state::Instance;
+use ethereum_types::{Address, U256};
 
 pub use compute::Compute;
 pub use mm::MM;
@@ -50,7 +38,7 @@ enum Role {
     Challenger,
 }
 
-pub fn build_machine_id(index: U256, address: &Address) -> String {
+pub fn build_machine_id(_index: U256, _address: &Address) -> String {
     //return format!("{:x}:{}", address, index);
     return "0000000000000000000000000000000000000000000000008888888888888888"
         .to_string();

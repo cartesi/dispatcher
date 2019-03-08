@@ -21,11 +21,9 @@ extern crate web3;
 use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::{Param, Token};
-use ethcore_transaction::{Action, Transaction};
 use ethereum_types::{Address, U256};
-use futures::prelude::{async_block, await};
+use futures::prelude::async_block;
 use leveldb::database::Database;
-use leveldb::iterator::Iterable;
 use leveldb::kv::KV;
 use leveldb::options::{ReadOptions, WriteOptions};
 use serde_json::Value;
@@ -64,7 +62,6 @@ struct ConcernCache {
 }
 
 pub struct StateManager {
-    config: Configuration,
     web3: web3::Web3<web3::transports::http::Http>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     concern_data: HashMap<Concern, ConcernData>,
@@ -79,7 +76,7 @@ impl StateManager {
         let mut options = leveldb::options::Options::new();
         // if no database is found we start an empty one (no cache)
         options.create_if_missing = true;
-        let mut database: Database<Concern> =
+        let database: Database<Concern> =
             Database::open(&config.working_path.join("state_db"), options)
                 .chain_err(|| {
                     format!(
@@ -109,7 +106,7 @@ impl StateManager {
             // change this to proper file handling (duplicate code in transact.)
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
-            let truffle_abi = file.read_to_string(&mut s)?;
+            file.read_to_string(&mut s)?;
             let v: Value = serde_json::from_str(&s[..])
                 .chain_err(|| format!("could not read truffle json file"))?;
 
@@ -147,7 +144,6 @@ impl StateManager {
         }
 
         Ok(StateManager {
-            config: config,
             concern_data: concern_data,
             web3: web3,
             _eloop: _eloop,
@@ -202,14 +198,6 @@ impl StateManager {
             }
         };
         trace!("Cached concern is {:?}", concern_cache);
-
-        let a = contract
-            .query("currentIndex", (), None, Options::default(), None)
-            .map(|index: U256| index.as_usize())
-            .map_err(|e| {
-                Error::from(e).chain_err(|| "error while getting current index")
-            })
-            .wait();
 
         trace!("Querying current index in contract {}", contract.address());
         let current_index = contract
@@ -314,7 +302,7 @@ impl StateManager {
                 contract
                     .query(
                         "isActive",
-                        (U256::from(i)),
+                        U256::from(i),
                         None,
                         Options::default(),
                         None,

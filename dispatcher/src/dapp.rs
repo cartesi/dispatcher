@@ -1,31 +1,11 @@
-use super::emulator::types;
 use super::error::*;
-use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
-use super::serde::{Deserialize, Deserializer, Serializer};
-use super::serde_json::Value;
-use super::state::Instance;
+use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 
 pub type SampleRun = HashMap<U256, H256>;
-
-// #[derive(Debug)]
-// pub enum Operation {
-//     Read,
-//     Right,
-// }
-
-// #[derive(Debug)]
-// pub struct Access {
-//     operation: Operation,
-//     address: u64,
-//     value: [u8; 8],
-//     siblings: Vec<H256>,
-// }
-
 pub type StepLog = Vec<emulator::Access>;
 pub type SampleStep = HashMap<U256, StepLog>;
 

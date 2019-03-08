@@ -26,33 +26,22 @@ use std::str;
 
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
-use emulator::{
-    Access, AccessOperation, SessionRunRequest, SessionStepRequest,
-    SessionStepResult,
-};
+use emulator::{SessionRunRequest, SessionStepRequest};
 pub use error::*;
-use ethabi::Token;
 use ethereum_types::{H256, U256};
-use hyper::body::Payload;
 use hyper::service::service_fn;
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use serde_json::Value;
+use hyper::{Body, Request, Response, Server};
 use state::StateManager;
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::io;
-use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::Sink;
 use tokio::timer::Interval;
-use transaction::{Strategy, TransactionManager, TransactionRequest};
+use transaction::{TransactionManager, TransactionRequest};
 use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
 use web3::futures::sync::{mpsc, oneshot};
-use web3::futures::{future, stream, Future, Stream};
-
-//use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use web3::futures::{stream, Future, Stream};
 
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
@@ -63,7 +52,7 @@ pub use dapp::{
 
 pub struct Dispatcher {
     config: Configuration,
-    web3: web3::api::Web3<web3::transports::http::Http>,
+    _web3: web3::api::Web3<web3::transports::http::Http>, // to stay in scope
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     assets: Assets,
 }
@@ -115,11 +104,11 @@ impl Dispatcher {
         let emulator = EmulatorManager::new(config.clone())?;
 
         info!("Creating archive");
-        let mut current_archive = Archive::new();
+        let current_archive = Archive::new();
 
         let dispatcher = Dispatcher {
             config: config,
-            web3: web3,
+            _web3: web3,
             _eloop: _eloop,
             assets: Assets {
                 transaction_manager: Arc::new(Mutex::new(transaction_manager)),
@@ -155,7 +144,7 @@ impl Dispatcher {
             ) -> Box<Future<Item = Response<Body>, Error = std::io::Error> + Send>
             {
                 let (resp_tx, resp_rx) = oneshot::channel();
-                let (parts, body) = req.into_parts();
+                let (_, body) = req.into_parts();
 
                 let body_future = body
                     .map_err(|e| {
@@ -170,7 +159,10 @@ impl Dispatcher {
                         let query: Query = match serde_json::from_slice(&body) {
                             Ok(q) => q,
                             Err(e) => {
-                                error!("could not parse query: {:?}", &body);
+                                error!(
+                                    "could not parse query: {:?}, error {:?}",
+                                    &body, e
+                                );
                                 Query::Indices
                             }
                         };
@@ -242,17 +234,18 @@ fn background_process<T: DApp<()>>(
     assets: Assets,
     query_rx: mpsc::Receiver<QueryHandle>,
 ) -> Box<Future<Item = (), Error = ()> + Send> {
-    // #[derive(PartialEq)]
+    // during the course of execution, there are periodic (Tick) events,
+    // or external queries concerning the current state
     enum Message {
         Tick,
-        Done,
         Asked(QueryHandle),
-        Indices,
-        Executed,
     }
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // use state to make sure threads do not compete
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     struct State {
-        handled: HashSet<usize>,
+        _handled: HashSet<usize>,
     }
 
     // Interval at which we poll and dispatch instances
@@ -272,7 +265,7 @@ fn background_process<T: DApp<()>>(
     // use this state to avoid treating an instance twice
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     let initial_state = State {
-        handled: HashSet::new(),
+        _handled: HashSet::new(),
     };
 
     // clone pointers to move inside the process
@@ -320,7 +313,7 @@ fn background_process<T: DApp<()>>(
 
                             Box::new(web3::futures::future::ok::<State, ()>(
                                 State {
-                                    handled: HashSet::new(),
+                                    _handled: HashSet::new(),
                                 },
                             ))
                         },
@@ -367,15 +360,10 @@ fn background_process<T: DApp<()>>(
                                     Ok(())
                                 })
                                 .map(|_| State {
-                                    handled: HashSet::new(),
+                                    _handled: HashSet::new(),
                                 });
                             Box::new(returned_state)
                         }
-                        _ => Box::new(web3::futures::future::ok::<State, ()>(
-                            State {
-                                handled: HashSet::new(),
-                            },
-                        )),
                     }
                 },
             )
@@ -398,10 +386,8 @@ fn execute_reaction<T: DApp<()>>(
             move |instance| -> Box<Future<Item = (), Error = Error> + Send> {
                 let transaction_manager =
                     assets.transaction_manager.lock().unwrap();
-                let state_manager = assets.state_manager.lock().unwrap();
                 let emulator = assets.emulator.lock().unwrap();
-                let mut current_archive =
-                    assets.current_archive.lock().unwrap();
+                let current_archive = assets.current_archive.lock().unwrap();
 
                 let reaction = match T::react(&instance, &current_archive, &())
                     .chain_err(|| format!("could not get dapp reaction"))
@@ -510,7 +496,7 @@ fn process_run_request(
                     resulting_hash.hashes
                 )
             }) {
-                Ok(r) => return web3::futures::future::ok::<(), _>(()),
+                Ok(_) => return web3::futures::future::ok::<(), _>(()),
                 Err(e) => {
                     return web3::futures::future::err(e);
                 }
@@ -550,7 +536,7 @@ fn process_step_request(
                 "Step machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
                 main_concern, index, step_request, resulting_step
             );
-            let store_result_in_archive = add_step(
+            add_step(
                 &mut current_archive,
                 step_request.id.clone(),
                 step_request.time,
@@ -591,13 +577,15 @@ fn process_transaction_request(
 }
 
 pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {
-    let mut samples = archive.entry(id.clone()).or_insert(SamplePair {
+    let samples = archive.entry(id.clone()).or_insert(SamplePair {
         run: SampleRun::new(),
         step: SampleStep::new(),
     });
-    //samples.0.insert(time, hash);
     if let Some(s) = samples.run.insert(time, hash) {
-        warn!("Machine {} at time {} recomputed", id, time);
+        warn!(
+            "Machine {} at time {} recomputed, run value {:?}",
+            id, time, s
+        );
     }
 }
 
@@ -607,12 +595,11 @@ pub fn add_step(
     time: U256,
     log: dapp::StepLog,
 ) {
-    let mut samples = archive.entry(id.clone()).or_insert(SamplePair {
+    let samples = archive.entry(id.clone()).or_insert(SamplePair {
         run: SampleRun::new(),
         step: SampleStep::new(),
     });
-    //samples.0.insert(time, hash);
     if let Some(s) = samples.step.insert(time, log) {
-        warn!("Machine {} at time {} recomputed", id, time);
+        warn!("Machine {} at time {} recomputed, step {:?}", id, time, s);
     }
 }

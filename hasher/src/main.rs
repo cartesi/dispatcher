@@ -11,12 +11,8 @@ pub mod hasher;
 pub mod manager;
 pub mod manager_grpc;
 
-use cartesi_base::*;
-use grpc::SingleResponse;
 use hasher::HasherEmulator;
-use manager::*;
 use manager_grpc::*;
-use std::env;
 use std::thread;
 
 fn main() {
@@ -43,16 +39,6 @@ fn main() {
         "Greeter server started on port {} and fakeness is {}",
         port, fake
     );
-
-    let hasher_emulator_2 = HasherEmulator::new(fake);
-    let mut request = SessionStepRequest::new();
-    request.set_session_id("Bla".to_string());
-    request.set_time(17);
-    let a = hasher_emulator_2
-        .session_step(grpc::RequestOptions::new(), request)
-        .wait()
-        .unwrap()
-        .1;
 
     loop {
         thread::park();

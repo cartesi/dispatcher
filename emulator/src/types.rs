@@ -3,12 +3,8 @@ extern crate emulator_interface;
 extern crate ethereum_types;
 extern crate rustc_hex;
 
-use self::configuration::Configuration;
-use self::ethereum_types::{H256, U256};
-use self::rustc_hex::FromHex;
-use super::error::*;
+use self::ethereum_types::H256;
 use emulator_interface::cartesi_base;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct SessionRunRequest {

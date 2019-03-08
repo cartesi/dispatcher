@@ -1,17 +1,11 @@
-use super::configuration::{Concern, Configuration};
 use super::dispatcher::{
-    AddressField, Bytes32Field, FieldType, String32Field, U256Array5,
-    U256Array6, U256Field,
+    AddressField, Bytes32Field, String32Field, U256Array6,
 };
-use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
+use super::dispatcher::{Archive, DApp, Reaction};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
-use super::serde::de::Error as SerdeError;
-use super::serde::{Deserialize, Deserializer, Serializer};
-use super::serde_json::Value;
-use super::state::Instance;
 use super::transaction::TransactionRequest;
 use super::{Partition, Role, MM};
 use mm::{MMCtx, MMCtxParsed};
@@ -263,6 +257,5 @@ impl DApp<()> for VG {
                 }
             },
         }
-        return Ok(Reaction::Idle);
     }
 }

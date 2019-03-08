@@ -24,10 +24,9 @@ use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
 use ethcore_transaction::{Action, Transaction};
-use ethereum_types::{Address, U256};
+use ethereum_types::U256;
 use ethkey::KeyPair;
 use futures::prelude::{async_block, await};
-use keccak_hash::keccak;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -107,7 +106,7 @@ impl TransactionManager {
             // change this to proper file handling (duplicate code in state)
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
-            let truffle_abi = file.read_to_string(&mut s)?;
+            file.read_to_string(&mut s)?;
             let v: Value = serde_json::from_str(&s[..])
                 .chain_err(|| format!("could not read truffle json file"))?;
 
