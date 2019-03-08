@@ -1,3 +1,7 @@
+//! Server that sends transactions to the blockchain, dealing with
+//! several issues, like estimating gas usage and waiting for
+//! confirmations
+
 #![feature(proc_macro_hygiene, generators)]
 
 extern crate configuration;
@@ -36,11 +40,16 @@ use std::time;
 use web3::futures::Future;
 use web3::types::Bytes;
 
+/// In the future there could be several strategies to submit a transaction.
+/// Simplest is based on estimated gas cost.
 #[derive(Clone, Debug)]
 pub enum Strategy {
     Simplest,
 }
 
+/// The transaction manager expects these requests to be submitted to the
+/// blockchain. Note that the data should have already been encoded,
+/// since the trasaction manager does not understand ABI's.
 #[derive(Clone, Debug)]
 pub struct TransactionRequest {
     pub concern: configuration::Concern,
@@ -50,11 +59,14 @@ pub struct TransactionRequest {
     pub strategy: Strategy,
 }
 
+/// Every concert that the Transaction Manager acts uppon should be
+/// provided with a key pair to sign transactions.
 struct ConcernData {
     key_pair: KeyPair,
     abi: Arc<ethabi::Contract>,
 }
 
+/// A Transaction Manager server
 pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
@@ -63,15 +75,17 @@ pub struct TransactionManager {
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // we need to implement recovering keys in keystore
+// the current method uses environmental variables
+// and it is not safe enough
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 fn recover_key(ref concern: &Concern) -> Result<KeyPair> {
+    info!("Recovering key from environment variable");
     let key_string: String =
         std::env::var("CARTESI_CONCERN_KEY").chain_err(|| {
             format!(
                 "for now, keys must be provided as env variable, provide one"
             )
         })?;
-    info!("recovering key from environment variable");
     let key_pair = KeyPair::from_secret(
         key_string
             .trim_start_matches("0x")
@@ -80,22 +94,30 @@ fn recover_key(ref concern: &Concern) -> Result<KeyPair> {
     )?;
     if key_pair.address() != concern.user_address {
         Err(Error::from(ErrorKind::InvalidTransactionRequest(
-            format!("key not found for concern: {:?}", *concern).to_string(),
+            format!("key does not match concern: {:?}", *concern).to_string(),
         )))
     } else {
         Ok(key_pair)
     }
 }
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// We need to implement a function call to query
+// whether a certain instance is being dealt with.
+// This needs the instance's nonce to be considered
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 impl TransactionManager {
+    /// Creates a new Transaction manager, based on the core's configuration
     pub fn new(
         config: Configuration,
         web3: web3::Web3<web3::transports::Http>,
     ) -> Result<TransactionManager> {
         let mut concern_data = HashMap::new();
+        // loop through each concern, adding them to the concern's data
         for concern in config.clone().concerns {
             trace!("Retrieving key for concern {}", &concern.contract_address);
-            let key = recover_key(&concern)?;
+            let key = recover_key(&concern)
+                .chain_err(|| "could not find key for concern")?;
 
             let abi_path = &config.abis.get(&concern).unwrap().abi;
             trace!(
@@ -103,7 +125,6 @@ impl TransactionManager {
                 &concern.contract_address,
                 &abi_path
             );
-            // change this to proper file handling (duplicate code in state)
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
             file.read_to_string(&mut s)?;
@@ -133,6 +154,7 @@ impl TransactionManager {
         })
     }
 
+    /// Signs and sends a given transaction
     pub fn send(
         &self,
         request: TransactionRequest,
@@ -154,13 +176,15 @@ impl TransactionManager {
         let confirmations: usize = (&self).config.confirmations;
 
         Box::new(async_block! {
+            trace!("Getting nonce");
             let nonce = await!(web3.eth()
                                .transaction_count(key.address(), None)
             ).chain_err(|| "could not retrieve nonce")?;
             info!("Nonce for {} is {}", key.address(), nonce);
+
+            trace!("Estimating gas price");
             let gas_price = await!(web3.eth().gas_price())
                 .chain_err(|| "could not retrieve gas price")?;
-
             let raw_data = abi
                 .function((&request.function[..]).into())
                 .and_then(|function| {
@@ -170,8 +194,9 @@ impl TransactionManager {
                     &request.data,
                     &request.function
                 ))?;
+            trace!("Gas price estimated as {}", gas_price);
 
-            info!("Gas price estimated as {}", gas_price);
+            trace!("Buiding transaction");
             let call_request = web3::types::CallRequest {
                 from: Some(key.address()),
                 to: request.concern.contract_address,
@@ -180,26 +205,34 @@ impl TransactionManager {
                 value: Some(request.value),
                 data: Some(Bytes(raw_data.clone())),
             };
+
+            trace!("Estimate total gas usage");
             let request_string = format!("{:?}", request.clone());
-            let gas = await!(web3.eth().estimate_gas(call_request, None))
+            let total_gas = await!(web3.eth().estimate_gas(call_request, None))
                 .chain_err(move ||
                            format!("could not estimate gas usage for call {:?}",
                                    request_string)
                 )?;
-            info!("Gas usage estimated as {}", gas);
-            info!("Signing transaction");
+            trace!("Gas usage estimated to be {}", total_gas);
+
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // Implement other sending strategies
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            trace!("Signing transaction");
             let signed_tx = Transaction {
                 action: Action::Call(request.concern.contract_address),
                 nonce: nonce,
                 // do something better then double
                 gas_price: U256::from(2).checked_mul(gas_price).unwrap(),
                 // do something better then double
-                gas: U256::from(2).checked_mul(gas).unwrap(),
+                gas: U256::from(2).checked_mul(total_gas).unwrap(),
                 value: request.value,
                 data: raw_data,
             }
             .sign(&key.secret(), Some(69));
-            info!("Sending transaction");
+
+            info!("Sending transaction: {:?}", &request);
             let raw = Bytes::from(rlp::encode(&signed_tx));
             //let hash = await!(web3.eth().send_raw_transaction(raw));
             let poll_interval = time::Duration::from_secs(1);

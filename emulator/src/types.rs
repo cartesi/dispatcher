@@ -1,3 +1,7 @@
+//! A collection of types that represent the manager grpc interface
+//! together with the conversion functions from the automatically
+//! generated types.
+
 extern crate configuration;
 extern crate emulator_interface;
 extern crate ethereum_types;
@@ -6,6 +10,7 @@ extern crate rustc_hex;
 use self::ethereum_types::H256;
 use emulator_interface::cartesi_base;
 
+/// Representation of a request for running the machine
 #[derive(Debug, Clone)]
 pub struct SessionRunRequest {
     pub session_id: String,
@@ -23,6 +28,7 @@ impl From<emulator_interface::manager::SessionRunRequest>
     }
 }
 
+/// Representation of the result of running the machine
 #[derive(Debug, Clone)]
 pub struct SessionRunResult {
     pub hashes: Vec<H256>,
@@ -41,15 +47,7 @@ impl From<emulator_interface::manager::SessionRunResult> for SessionRunResult {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Proof {
-    pub address: u64,
-    pub log2_size: u32,
-    // pub target_hash: H256,
-    pub sibling_hashes: Vec<H256>,
-    // pub root_hash: H256,
-}
-
+/// Access operation is either a `Read` or a `Write`
 #[derive(Debug, Clone)]
 pub enum AccessOperation {
     Read,
@@ -63,6 +61,17 @@ impl From<cartesi_base::AccessOperation> for AccessOperation {
             cartesi_base::AccessOperation::WRITE => AccessOperation::Write,
         }
     }
+}
+
+/// A proof that a certain subtree has the contents represented by
+/// `target_hash`.
+#[derive(Debug, Clone)]
+pub struct Proof {
+    pub address: u64,
+    pub log2_size: u32,
+    // pub target_hash: H256,
+    pub sibling_hashes: Vec<H256>,
+    // pub root_hash: H256,
 }
 
 impl From<cartesi_base::Proof> for Proof {
@@ -94,6 +103,7 @@ impl From<cartesi_base::Proof> for Proof {
     }
 }
 
+/// An access to be logged during the step procedure
 #[derive(Debug, Clone)]
 pub struct Access {
     pub operation: AccessOperation,
@@ -115,6 +125,7 @@ impl From<emulator_interface::cartesi_base::Access> for Access {
     }
 }
 
+/// A representation of a request for a logged machine step
 #[derive(Debug, Clone)]
 pub struct SessionStepRequest {
     pub session_id: String,
@@ -132,6 +143,7 @@ impl From<emulator_interface::manager::SessionStepRequest>
     }
 }
 
+/// A representation of the result of a logged machine step
 #[derive(Debug, Clone)]
 pub struct SessionStepResult {
     pub log: Vec<Access>,

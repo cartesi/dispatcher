@@ -1,4 +1,4 @@
-#![feature(generators)]
+#![feature(generators, proc_macro_hygiene)]
 
 #[macro_use]
 extern crate log;
@@ -18,10 +18,6 @@ use web3::futures::Future;
 use web3::types::{BlockId, BlockNumber};
 use web3::Transport;
 
-fn str_error(msg: &str) -> Error {
-    ErrorKind::Msg(String::from(msg)).into()
-}
-
 pub trait EthExt<T: Transport> {
     fn get_delay(self) -> Box<Future<Item = i64, Error = Error>>;
 }
@@ -31,12 +27,18 @@ impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
     fn get_delay(self) -> Result<i64> {
         let block = await!(self.block(BlockId::Number(BlockNumber::Latest)))?;
         let block_time: i64 = block
-            .ok_or(str_error("Latest block not found"))?
+            .ok_or(Error::from(ErrorKind::ChainError(
+                "Latest block not found".to_string(),
+            )))?
             .timestamp
             .as_u64() as i64;
         let current_time: i64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|_e| str_error("Time went backwards"))?
+            .map_err(|_e| {
+                Error::from(ErrorKind::ChainError(
+                    "Time went backwords".to_string(),
+                ))
+            })?
             .as_secs() as i64;
         Ok(current_time - block_time)
     }
@@ -60,17 +62,19 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
     ) -> Box<Future<Item = (), Error = Error>> {
         info!("Testing Ethereum node's responsiveness");
         let url = config.url.clone();
-        Box::new(
-            self.web3()
+        let web3_clone = self.web3().clone();
+        Box::new(async_block! {
+            await!(
+                web3_clone
                 .client_version()
-                .map_err(move |_e| {
-                    str_error(&format!(
-                        "no Ethereum node responding at url: {}",
-                        url
-                    ))
-                })
-                .map(|_| ()),
-        )
+                .map_err(move |_e| Error::from(
+                    ErrorKind::ChainError(format!(
+                       "no Ethereum node responding at url: {}",
+                       url
+                    ))))
+                .map(|_| ())
+            )
+        })
     }
 
     fn node_in_sync(
@@ -83,12 +87,11 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
             let max_delay = config.max_delay.clone();
             Box::new(self.eth().get_delay().then(move |res| {
                 let delay = Duration::seconds(res?);
-                // intermediate delay
+                // got an intermediate delay
                 if (delay > warn_delay) && (delay <= max_delay) {
                     warn!("ethereum node is delayed, but not above max_delay");
                     return Ok(());
                 }
-
                 // exceeded max_delay
                 if delay > max_delay {
                     return Err(Error::from(ErrorKind::ChainNotInSync(
@@ -100,14 +103,6 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
         } else {
             Box::new(web3::futures::future::ok(()))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
     }
 }
 
@@ -123,6 +118,4 @@ pub fn print_error(e: &Error) {
     if let Some(backtrace) = e.backtrace() {
         error!("backtrace: {:?}", backtrace);
     }
-
-    //::std::process::exit(1);
 }
