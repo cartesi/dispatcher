@@ -6,20 +6,30 @@ extern crate keccak_hash;
 extern crate protobuf;
 extern crate rustc_hex;
 
-use self::ethereum_types::{H256, U256};
+use self::ethereum_types::H256;
 use cartesi_base::*;
 use grpc::SingleResponse;
 use manager::*;
 use manager_grpc::*;
+use std::fmt;
 
 pub struct HasherEmulator {
-    fake: bool,
+    defective: bool,
+}
+
+impl fmt::Display for HasherEmulator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hasher {{ defective: {} }}", self.defective)
+    }
 }
 
 impl HasherEmulator {
-    pub fn new(fake: bool) -> Self {
-        info!("Creating new hasher with fakeness: {}", fake);
-        HasherEmulator { fake: fake }
+    pub fn new(defective: bool) -> Self {
+        let hasher_emulator = HasherEmulator {
+            defective: defective,
+        };
+        info!("Creating {}", hasher_emulator);
+        return hasher_emulator;
     }
 }
 
@@ -29,24 +39,20 @@ impl MachineManager for HasherEmulator {
         _m: grpc::RequestOptions,
         _: NewSessionRequest,
     ) -> SingleResponse<Hash> {
-        let mut r = Hash::new();
-        r.set_content(vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ]);
-        grpc::SingleResponse::completed(r)
+        grpc::SingleResponse::completed(Hash::new())
     }
     fn session_run(
         &self,
         _m: grpc::RequestOptions,
         request: SessionRunRequest,
     ) -> SingleResponse<SessionRunResult> {
-        let v: Vec<Hash> = calculate_hasher_vector(&request.times, self.fake);
+        let calculated_vec: Vec<Hash> =
+            calculate_hasher_vector(&request.times, self.defective);
         info!(
             "Session {:?} received {:?} and returned {:?}",
-            request.session_id, request.times, v
+            request.session_id, request.times, calculated_vec
         );
-        let repeated_field = protobuf::RepeatedField::from_vec(v);
+        let repeated_field = protobuf::RepeatedField::from_vec(calculated_vec);
         let mut r = SessionRunResult::new();
         r.set_hashes(repeated_field);
         grpc::SingleResponse::completed(r)
@@ -60,17 +66,10 @@ impl MachineManager for HasherEmulator {
             "Session {:?} received {:?} and returned a proof",
             request.session_id, request.time
         );
-        let value: U256 = U256::from(request.time);
-        let increased_value: U256 = U256::from(request.time + 1);
+        let value: u64 = request.time;
+        let increased_value: u64 = request.time + 1;
 
-        let siblings: Vec<Hash> = calculate_proof()
-            .into_iter()
-            .map(|hash| {
-                let mut result = Hash::new();
-                result.set_content(hash.0.to_vec());
-                result
-            })
-            .collect();
+        let siblings: Vec<Hash> = calculate_proof();
 
         let mut proof: Proof = Proof::new();
         proof.set_address(0);
@@ -80,15 +79,15 @@ impl MachineManager for HasherEmulator {
         let mut access_read: Access = Access::new();
         access_read.set_operation(AccessOperation::READ);
         access_read.set_address(0);
-        access_read.set_read(value.clone().as_u64());
-        access_read.set_written(value.clone().as_u64());
+        access_read.set_read(value);
+        access_read.set_written(value);
         access_read.set_proof(proof.clone());
 
         let mut access_write: Access = Access::new();
         access_write.set_operation(AccessOperation::WRITE);
         access_write.set_address(0);
-        access_write.set_read(value.as_u64());
-        access_write.set_written(increased_value.as_u64());
+        access_write.set_read(value);
+        access_write.set_written(increased_value);
         access_write.set_proof(proof);
 
         let mut access_log: AccessLog = AccessLog::new();
@@ -96,15 +95,13 @@ impl MachineManager for HasherEmulator {
             access_read,
             access_write,
         ]));
-
-        //           proof.into_iter().map(|hash| hash).collect();
         let mut r = SessionStepResult::new();
         r.set_log(access_log);
         grpc::SingleResponse::completed(r)
     }
 }
 
-fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
+fn calculate_hasher_vector(times: &Vec<u64>, defective: bool) -> Vec<Hash> {
     let mut uncles: Vec<H256> = Vec::new();
     uncles.push(calculate_hash_u64(0));
     for i in 1..61 {
@@ -114,17 +111,16 @@ fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
     return times
         .into_iter()
         .map(move |time| {
-            let u: u64;
-            if fake {
-                u = std::cmp::min(*time, 17);
+            let altered_time: u64;
+            if defective {
+                altered_time = std::cmp::min(*time, 17);
             } else {
-                u = *time;
+                altered_time = *time;
             }
-            let mut running_hash = calculate_hash_u64(u);
+            let mut running_hash = calculate_hash_u64(altered_time);
             for i in 0..61 {
                 running_hash = calculate_hash_pair(running_hash, uncles[i]);
             }
-            //warn!("{}", running_hash.to_hex());
             let mut returned_hash = Hash::new();
             returned_hash.set_content(running_hash.to_vec());
             returned_hash.clone()
@@ -132,17 +128,21 @@ fn calculate_hasher_vector(times: &Vec<u64>, fake: bool) -> Vec<Hash> {
         .collect();
 }
 
-fn calculate_proof() -> Vec<H256> {
+fn calculate_proof() -> Vec<Hash> {
     let mut uncles: Vec<H256> = Vec::new();
     uncles.push(calculate_hash_u64(0));
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // replace 62 by 61
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     for i in 1..61 {
         let previous = uncles[i - 1].clone();
         uncles.push(calculate_hash_pair(previous, previous));
     }
-    return uncles;
+    return uncles
+        .into_iter()
+        .map(|hash| {
+            let mut result = Hash::new();
+            result.set_content(hash.0.to_vec());
+            result
+        })
+        .collect();
 }
 
 fn calculate_hash_u64(data: u64) -> H256 {
@@ -156,6 +156,5 @@ fn calculate_hash_pair(data_1: H256, data_2: H256) -> H256 {
     let mut vec_1: Vec<u8> = bytes_1.into_iter().map(|&a| a).collect();
     let mut vec_2: Vec<u8> = bytes_2.into_iter().map(|&a| a).collect();
     vec_1.append(&mut vec_2);
-    //error!("size of vector is {}", vec_1.len());
     return keccak_hash::keccak(&vec_1.as_slice());
 }

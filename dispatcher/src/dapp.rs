@@ -5,10 +5,16 @@ use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
 use std::collections::{HashMap, HashSet};
 
+/// Stores the hash of each time that has been calculated
 pub type SampleRun = HashMap<U256, H256>;
+
+/// The log of a given step, composed of various accesses (read/write)
 pub type StepLog = Vec<emulator::Access>;
+
+/// Stores step logs of each time for which it has been calculated
 pub type SampleStep = HashMap<U256, StepLog>;
 
+/// This is our collection of samples (both of running and step logs)
 pub struct SamplePair {
     pub run: SampleRun,
     pub step: SampleStep,

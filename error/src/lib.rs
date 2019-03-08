@@ -42,6 +42,11 @@ error_chain! {
             description("invalid configuration")
                 display("invalid configuration: {}", details)
         }
+        ChainError(details: String) {
+            description("blockchain presented error")
+                display("blockchain presented error: {}",
+                        details)
+        }
         ChainNotInSync(delay: Duration, max_delay: Duration) {
             description("chain too delayed")
                 display("ETH node not up to date: delay {}, max_delay {}",

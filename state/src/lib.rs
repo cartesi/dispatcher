@@ -69,9 +69,7 @@ pub struct StateManager {
 }
 
 impl StateManager {
-    pub fn new(
-        config: Configuration //web3: web3::Web3<web3::transports::http::Http>
-    ) -> Result<StateManager> {
+    pub fn new(config: Configuration) -> Result<StateManager> {
         info!("Opening state manager database");
         let mut options = leveldb::options::Options::new();
         // if no database is found we start an empty one (no cache)
@@ -94,7 +92,7 @@ impl StateManager {
         let web3 = web3::Web3::new(transport);
         web3.test_connection(&config).wait()?;
 
-        info!("Preparing data for {} concerns", config.concerns.len());
+        info!("Preparing assets for {} concerns", config.concerns.len());
         let mut concern_data = HashMap::new();
         for concern in config.clone().concerns {
             let abi_path = &config.abis.get(&concern).unwrap().abi;
@@ -103,7 +101,6 @@ impl StateManager {
                 &concern.contract_address,
                 &abi_path
             );
-            // change this to proper file handling (duplicate code in transact.)
             let mut file = File::open(abi_path)?;
             let mut s = String::new();
             file.read_to_string(&mut s)?;
@@ -171,11 +168,24 @@ impl StateManager {
             }))
     }
 
-    /// Gets an expanded version of the instances by querying the blockchain
+    /// Gets an expanded list of the instances by querying the blockchain
     fn get_expanded_cache(
         &self,
         concern: Concern,
     ) -> Box<Future<Item = Arc<ConcernCache>, Error = Error> + Send> {
+        // first get the cached instances
+        let mut concern_cache = match self.get_concern_cache(&concern) {
+            Ok(concern) => concern,
+            Err(e) => {
+                return Box::new(futures::future::err(
+                    Error::from(e)
+                        .chain_err(|| "error while getting concern_cache"),
+                ));
+            }
+        };
+        trace!("Cached concerns are {:?}", concern_cache);
+
+        // clone contract to move it to future clojure
         let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
@@ -188,39 +198,31 @@ impl StateManager {
             }
             .contract,
         );
-        let mut concern_cache = match self.get_concern_cache(&concern) {
-            Ok(concern) => concern,
-            Err(e) => {
-                return Box::new(futures::future::err(
-                    Error::from(e)
-                        .chain_err(|| "error while getting concern_cache"),
-                ));
-            }
-        };
-        trace!("Cached concern is {:?}", concern_cache);
-
-        trace!("Querying current index in contract {}", contract.address());
-        let current_index = contract
+        trace!(
+            "Querying current maximum index in contract {}",
+            contract.address()
+        );
+        let current_max_index = contract
             .query("currentIndex", (), None, Options::default(), None)
             .map(|index: U256| index.as_usize())
             .map_err(|e| {
                 Error::from(e).chain_err(|| "error while getting current index")
             });
 
-        let cached_index = concern_cache.last_maximum_index;
+        let cached_max_index = concern_cache.last_maximum_index;
 
-        return Box::new(current_index.and_then(move |index| {
+        return Box::new(current_max_index.and_then(move |max_index| {
             trace!(
-                "Number of instances in contract {} is {}",
+                "Current maximum number of indices in contract {} is {}",
                 contract.address(),
-                index
+                max_index
             );
-
-            if index > cached_index {
-                trace!("Adding extra indices to the list");
-                // all new indices become a future queryint its concern
+            // check if any other instance has been created since last cache
+            if max_index > cached_max_index {
+                trace!("Adding extra indices to the cache");
+                // all new indices become a future, querying if it is a concern
                 let mut instance_futures = vec![];
-                for index in cached_index..index {
+                for index in cached_max_index..max_index {
                     instance_futures.push(
                         contract
                             .query(
@@ -238,6 +240,7 @@ impl StateManager {
                             }),
                     );
                 }
+                // join the vector of futures into a stream,
                 // filter only the ones that conern us,
                 // returning a future that resolves to a ConcernCache
                 Either::A(
@@ -251,7 +254,7 @@ impl StateManager {
                             list_concerns.dedup();
                             concern_cache.list_instances.extend(list_concerns);
                             Arc::new(ConcernCache {
-                                last_maximum_index: index,
+                                last_maximum_index: max_index,
                                 list_instances: concern_cache.list_instances,
                             })
                         })
@@ -262,7 +265,7 @@ impl StateManager {
                 )
             } else {
                 Either::B(futures::future::ok(Arc::new(ConcernCache {
-                    last_maximum_index: index,
+                    last_maximum_index: max_index,
                     list_instances: concern_cache.list_instances,
                 })))
             }
@@ -274,6 +277,13 @@ impl StateManager {
         &self,
         concern: Concern,
     ) -> Box<Future<Item = Vec<usize>, Error = Error> + Send> {
+        // query tentative instances
+        let expanded_cache = self
+            .get_expanded_cache(concern)
+            .map_err(|e| e.chain_err(|| "error while getting expanded cache"));
+
+        // clone database and contract to move them to future clojure
+        let database = Arc::clone(&self.database);
         let contract = Arc::clone(
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
@@ -286,12 +296,6 @@ impl StateManager {
             }
             .contract,
         );
-
-        let expanded_cache = self
-            .get_expanded_cache(concern)
-            .map_err(|e| e.chain_err(|| "error while getting expanded cache"));
-        let database = Arc::clone(&self.database);
-
         return Box::new(expanded_cache.and_then(move |cache| {
             let cache_list = cache.list_instances.clone();
             trace!("Removing inactive instances");
@@ -313,7 +317,7 @@ impl StateManager {
                             .chain_err(|| "error while querying isActive")
                     })
             });
-            // create a stream of the above list of futures as they resolve
+            // create a stream from the above list of futures as they resolve
             stream::futures_unordered(active_futures)
                 .filter_map(move |(index, is_active)| {
                     Some(index).filter(|_| is_active)
@@ -344,11 +348,13 @@ impl StateManager {
         concern: Concern,
         index: usize,
     ) -> Box<Future<Item = Instance, Error = Error> + Send> {
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // this first implementation is completely synchronous
         // since we wait for all internal futures and then return
         // an imediatly available future. But we should refactor this
-        // using futures::future::loop_fn to interactively explor th
+        // using futures::future::loop_fn to interactively explor the
         // tree of instances.
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         trace!(
             "Get concern data for contract {}, index {}",
             concern.contract_address,
@@ -368,19 +374,20 @@ impl StateManager {
         .clone();
 
         trace!(
-            "Retrieving contract and abi for {} ({})",
+            "Retrieving contract and abi for {} address ({})",
             concern_data.file_name,
             concern_data.contract.address(),
         );
         let contract = Arc::clone(&concern_data.contract);
         let abi = Arc::clone(&concern_data.abi);
 
+        // call contract function to get its current state
         let function = match abi.function("getState".into()) {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
 
-        let call = match function.encode_input(&U256::from(index).into_tokens())
+        let args = match function.encode_input(&U256::from(index).into_tokens())
         {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
@@ -396,7 +403,7 @@ impl StateManager {
                     gas: None.into(),
                     gas_price: None.into(),
                     value: None.into(),
-                    data: Some(Bytes(call)),
+                    data: Some(Bytes(args)),
                 },
                 None.into(),
             )
@@ -415,11 +422,13 @@ impl StateManager {
                 Ok(format!("[{}]", response.join(",\n")))
             });
 
+        // get contract's json data
         let json_data = match state.wait() {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
 
+        // get all the sub instances that the current instance depend on
         let (sub_address, sub_indices): (Vec<Address>, Vec<U256>) =
             match contract
                 .query(
@@ -453,6 +462,7 @@ impl StateManager {
             ));
         }
 
+        // join the subinstances together to return the current instance
         let starting_instance = Instance {
             concern: concern,
             index: U256::from(index),

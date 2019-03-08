@@ -24,20 +24,20 @@ fn main() {
         .unwrap_or("50051".to_string())
         .parse()
         .expect("could not parse port");
-    let fake: bool = arguments
+    let defective: bool = arguments
         .next()
         .unwrap_or("false".to_string())
         .parse()
-        .expect("could not parse fakeness");
+        .expect("could not parse defectiveness");
     let mut server = grpc::ServerBuilder::new_plain();
     server.http.set_port(port);
-    let hasher_emulator = HasherEmulator::new(fake);
+    let hasher_emulator = HasherEmulator::new(defective);
     server.add_service(MachineManagerServer::new_service_def(hasher_emulator));
     server.http.set_cpu_pool_threads(1);
     let _server = server.build().expect("server");
     info!(
-        "Greeter server started on port {} and fakeness is {}",
-        port, fake
+        "Greeter server started on port {} and defectiveness is {}",
+        port, defective
     );
 
     loop {

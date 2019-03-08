@@ -1,3 +1,6 @@
+//! Configuration for a cartesi node, including config file, command
+//! line arguments and environmental variables.
+
 extern crate env_logger;
 extern crate envy;
 extern crate error;
@@ -27,18 +30,32 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use time::Duration;
 
-/// A concern is a pair: smart contract and user
+/// A concern is a pair (smart contract, user) that this node should
+/// take care of.
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq, Copy)]
 pub struct Concern {
     pub contract_address: Address,
     pub user_address: Address,
 }
 
+impl fmt::Display for Concern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Contract: {},\
+             User: {}",
+            self.contract_address, self.user_address
+        )
+    }
+}
+
+/// A wrapper for the path of an Ethereum ABI
 #[derive(Debug, Clone)]
 pub struct ConcernAbi {
     pub abi: PathBuf,
 }
 
+/// A concern together with an ABI
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FullConcern {
     contract_address: Address,
@@ -55,6 +72,8 @@ impl From<FullConcern> for Concern {
     }
 }
 
+// In order to use a concern in a key-value disk database, we need to
+// implement this Trait.
 impl db_key::Key for Concern {
     fn from_u8(key: &[u8]) -> Concern {
         use std::mem::transmute;
@@ -78,6 +97,7 @@ impl db_key::Key for Concern {
 }
 
 impl Concern {
+    /// A bytes representation of a concern
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut result: [u8; 40] = [0; 40];
         self.contract_address.copy_to(&mut result[0..20]);
@@ -170,12 +190,22 @@ impl fmt::Display for Configuration {
              Testing: {}\
              Max delay: {}\
              Warning delay: {}\
-             Number of extra concerns: {} }}",
+             Main concern: {}\
+             Number of concerns: {}\
+             Working path: {:?}\
+             Emulator port: {}\
+             Number of onfirmations: {}\
+             Query port: {}",
             self.url,
             self.testing,
             self.max_delay,
             self.warn_delay,
-            self.concerns.len()
+            self.main_concern,
+            self.concerns.len(),
+            self.working_path,
+            self.emulator_port,
+            self.confirmations,
+            self.query_port,
         )
     }
 }
@@ -208,7 +238,6 @@ impl Configuration {
         file.read_to_string(&mut contents).chain_err(|| {
             format!("could not read from configuration file: {}", config_path)
         })?;
-        println!("File {}", contents.clone());
         let file_config: FileConfiguration =
             serde_yaml::from_str(&contents[..])
                 .map_err(|e| error::Error::from(e))
@@ -222,7 +251,7 @@ impl Configuration {
 
         // merge these three configurations
         let config = combine_config(cli_config, env_config, file_config)?;
-        info!("Combined args: {:?}", config);
+        info!("Combined args: {}", config);
 
         // check if max_delay and warn delay are compatible
         if config.max_delay < config.warn_delay {
