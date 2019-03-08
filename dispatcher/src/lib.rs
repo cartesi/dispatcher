@@ -49,6 +49,9 @@ pub use dapp::{
     U256Array, U256Array5, U256Array6, U256Field,
 };
 
+/// Responsible for querying the state of each concern, get a reaction
+/// from the dapp and submit reactions for either the Transaction Manager or
+/// the Emulator
 pub struct Dispatcher {
     config: Configuration,
     _web3: web3::api::Web3<web3::transports::http::Http>, // to stay in scope
@@ -56,6 +59,11 @@ pub struct Dispatcher {
     assets: Assets,
 }
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// should we put the Arc<Mutex<>> in the Assets instead of in each of them?
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+/// All the assets in the dispatcher that have to be shared by tokio tasks
 struct Assets {
     transaction_manager: Arc<Mutex<TransactionManager>>,
     state_manager: Arc<Mutex<StateManager>>,
@@ -75,6 +83,8 @@ impl Assets {
 }
 
 impl Dispatcher {
+    /// Creates a new dispatcher loading configuration from file indicated
+    /// in either command line or environmental variable
     pub fn new() -> Result<Dispatcher> {
         info!("Loading configuration file");
         let config = Configuration::new()
@@ -121,91 +131,29 @@ impl Dispatcher {
     }
 
     pub fn run<T: DApp<()>>(&self) {
-        // get owned copies of main_concern and assets
+        // get owned copies of main_concern and assets to move into task
         let main_concern_run = (&self).config.main_concern.clone();
         let assets_run = (&self).assets.clone();
         let port = (&self).config.query_port;
         tokio::run(lazy(move || {
-            // start listening to port
-            let addr = ([127, 0, 0, 1], port).into();
-
             let (query_tx, query_rx) = mpsc::channel(1_024);
 
+            // spawn the background process that handles all the
+            // instances and delegates work to other tokio tasks
             tokio::spawn(background_process::<T>(
                 main_concern_run,
                 assets_run,
                 query_rx,
             ));
 
-            fn replier(
-                tx: mpsc::Sender<QueryHandle>,
-                req: Request<Body>,
-            ) -> Box<Future<Item = Response<Body>, Error = std::io::Error> + Send>
-            {
-                let (resp_tx, resp_rx) = oneshot::channel();
-                let (_, body) = req.into_parts();
-
-                let body_future = body
-                    .map_err(|e| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("request error {}", e),
-                        )
-                    })
-                    .concat2();
-                let query_future = body_future
-                    .and_then(|body| {
-                        let query: Query = match serde_json::from_slice(&body) {
-                            Ok(q) => q,
-                            Err(e) => {
-                                error!(
-                                    "could not parse query: {:?}, error {:?}",
-                                    &body, e
-                                );
-                                Query::Indices
-                            }
-                        };
-                        tx.send(QueryHandle {
-                            query: query,
-                            oneshot: resp_tx,
-                        })
-                        .map_err(|e| {
-                            std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("request error {}", e),
-                            )
-                        })
-                        .and_then(|_| {
-                            resp_rx
-                                .and_then(|answer| {
-                                    let response = Response::builder()
-                                        .header(
-                                            "Content-Type",
-                                            " application/json",
-                                        )
-                                        .body(Body::from(answer))
-                                        .unwrap();
-                                    Ok(response)
-                                })
-                                .map_err(|e| {
-                                    std::io::Error::new(
-                                        std::io::ErrorKind::Other,
-                                        format!("request error {}", e),
-                                    )
-                                })
-                        })
-                    })
-                    .map_err(|e| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("request error {}", e),
-                        )
-                    });
-                Box::new(query_future)
-            };
+            // start listening to port for state queries
+            let addr = ([127, 0, 0, 1], port).into();
             let listener = tokio::net::TcpListener::bind(&addr)
                 .expect("could not bind to port");
 
+            // to each incomming connection, create a replier that
+            // knows how to handle queries about the state of each
+            // instance
             Server::builder(listener.incoming())
                 .serve(move || {
                     let tx = query_tx.clone();
@@ -216,58 +164,61 @@ impl Dispatcher {
     }
 }
 
+/// The query handle comes with a query and a oneshot communication
+/// channel for sending the result
 #[derive(Debug)]
 struct QueryHandle {
     query: Query,
     oneshot: web3::futures::sync::oneshot::Sender<String>,
 }
 
+/// All possible queries that can be done to the server concerning the
+/// state of instances
 #[derive(Debug, PartialEq, Deserialize)]
 enum Query {
     Indices,
     Instance(usize),
 }
 
+// creates a future representing the background process that organizes
+// all instances and delegates tasks
 fn background_process<T: DApp<()>>(
     main_concern: Concern,
     assets: Assets,
     query_rx: mpsc::Receiver<QueryHandle>,
 ) -> Box<Future<Item = (), Error = ()> + Send> {
     // during the course of execution, there are periodic (Tick) events,
-    // or external queries concerning the current state
+    // or external queries concerning the current state. we need to react
+    // to these two types of messages (inspired by Elm programming language)
     enum Message {
         Tick,
         Asked(QueryHandle),
     }
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // use state to make sure threads do not compete
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // use this state to avoid treating an instance twice
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     struct State {
         _handled: HashSet<usize>,
     }
 
     // Interval at which we poll and dispatch instances
     let tick_duration = Duration::from_secs(6);
-
     let interval = Interval::new_interval(tick_duration)
         .map(|_| Message::Tick)
         .map_err(|_| ());
 
     let messages = query_rx
         .map(Message::Asked)
-        // Merge in the stream of intervals
+        // Merge queries received from channel to the stream of Ticks
         .select(interval);
-    //        .take_while(|item| future::ok(*item != Message::Done));
 
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // use this state to avoid treating an instance twice
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // Initialize state as empty
     let initial_state = State {
         _handled: HashSet::new(),
     };
 
-    // clone pointers to move inside the process
+    // clone assets to move them inside the closure
     let main_concern_fold = main_concern.clone();
     let assets_fold = assets.clone();
 
@@ -279,6 +230,7 @@ fn background_process<T: DApp<()>>(
                       message|
                       -> Box<Future<Item = State, Error = ()> + Send> {
                     match message {
+                        // message is a query, answer it appropriately
                         Message::Asked(q) => {
                             info!("Received query: {:?}", q.query);
                             let state_manager_query = assets_fold
@@ -292,6 +244,7 @@ fn background_process<T: DApp<()>>(
                                         .get_indices(main_concern_fold.clone())
                                         .wait()
                                         .unwrap();
+                                    // send result back from oneshot channel
                                     q.oneshot.send(
                                         serde_json::to_string(&indices).unwrap()
                                     ).unwrap();},
@@ -305,26 +258,30 @@ fn background_process<T: DApp<()>>(
                                         )
                                         .wait()
                                         .unwrap();
+                                    // send result back from oneshot channel
                                     q.oneshot.send(
                                         serde_json::to_string(&instance).unwrap()
                                     ).unwrap();},
                                 };
 
+                            // for now we don't keep track of the state
                             Box::new(web3::futures::future::ok::<State, ()>(
                                 State {
                                     _handled: HashSet::new(),
                                 },
                             ))
                         },
+                        // received a periodic Tick. We need to check
+                        // for new instances and launch tasks for each.
                         Message::Tick => {
+                            // clone assets to have static lifetime
+                            let state_manager_indices =
+                                assets_fold.state_manager.clone();
+
                             trace!(
                                 "Getting indices for {:?}",
                                 main_concern_fold
                             );
-
-                            let state_manager_indices =
-                                assets_fold.state_manager.clone();
-
                             let stream_of_indices = state_manager_indices
                                 .lock()
                                 .unwrap()
@@ -388,6 +345,7 @@ fn execute_reaction<T: DApp<()>>(
                 let emulator = assets.emulator.lock().unwrap();
                 let current_archive = assets.current_archive.lock().unwrap();
 
+                // get reaction from dapp to this instance
                 let reaction = match T::react(&instance, &current_archive, &())
                     .chain_err(|| format!("could not get dapp reaction"))
                 {
@@ -403,6 +361,7 @@ fn execute_reaction<T: DApp<()>>(
                     reaction
                 );
 
+                // act according to dapp reaction
                 match reaction {
                     Reaction::Request(run_request) => {
                         let current_archive_clone =
@@ -462,11 +421,6 @@ fn process_run_request(
             )))
         })
         .then(move |grpc_result| {
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // implement proper error and metadata
-            // handling
-            // but what on earth is going on with grpc?
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             let resulting_hash = grpc_result.unwrap();
             info!(
                 "Run machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
@@ -480,6 +434,7 @@ fn process_run_request(
                 .map(|(time, hash)| -> Result<()> {
                     let mut current_archive =
                         current_archive_arc.lock().unwrap();
+                    // add results of run to archive
                     add_run(
                         &mut current_archive,
                         run_request.session_id.clone(),
@@ -491,7 +446,7 @@ fn process_run_request(
                 .collect();
             match store_result_in_archive.chain_err(|| {
                 format!(
-                    "could not convert to hash one of these: {:?}",
+                    "could not convert to hash one of these strings: {:?}",
                     resulting_hash.hashes
                 )
             }) {
@@ -512,38 +467,35 @@ fn process_step_request(
 ) -> Box<Future<Item = (), Error = Error> + Send> {
     info!("Step request. Concern {:?}, index {}", main_concern, index);
 
-    return Box::new(emulator
-        .step(SessionStepRequest {
-            session_id: step_request.session_id.clone(),
-            time: step_request.time,
-        })
-        .map_err(|e| {
-            Error::from(ErrorKind::GrpcError(format!(
-                "could not run emulator: {}",
-                e
-            )))
-        })
-        .then(move |grpc_result| {
-    let mut current_archive = current_archive_arc.lock().unwrap();
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // implement proper error and metadata
-            // handling
-            // but what on earth is going on with grpc?
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            let resulting_step = grpc_result.unwrap();
-            info!(
-                "Step machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
-                main_concern, index, step_request, resulting_step
-            );
-            add_step(
-                &mut current_archive,
-                step_request.session_id.clone(),
-                U256::from(step_request.time),
-                resulting_step.log
-                    .to_vec()
-            );
-            return web3::futures::future::ok::<(), _>(());
-        }));
+    return Box::new(
+        emulator
+            .step(SessionStepRequest {
+                session_id: step_request.session_id.clone(),
+                time: step_request.time,
+            })
+            .map_err(|e| {
+                Error::from(ErrorKind::GrpcError(format!(
+                    "could not run emulator: {}",
+                    e
+                )))
+            })
+            .then(move |grpc_result| {
+                let mut current_archive = current_archive_arc.lock().unwrap();
+                let resulting_step = grpc_result.unwrap();
+                info!(
+                    "Step. Concern {:?}, index {}, request {:?}, answer: {:?}",
+                    main_concern, index, step_request, resulting_step
+                );
+                // add results of step to archive
+                add_step(
+                    &mut current_archive,
+                    step_request.session_id.clone(),
+                    U256::from(step_request.time),
+                    resulting_step.log.to_vec(),
+                );
+                return web3::futures::future::ok::<(), _>(());
+            }),
+    );
 }
 
 fn process_transaction_request(
@@ -601,4 +553,69 @@ pub fn add_step(
     if let Some(s) = samples.step.insert(time, log) {
         warn!("Machine {} at time {} recomputed, step {:?}", id, time, s);
     }
+}
+
+// a replier is a tokio task that passes queries about the state of the
+// blockchain to the background task. We spawn one for each incomming
+// connnection.
+fn replier(
+    tx: mpsc::Sender<QueryHandle>,
+    req: Request<Body>,
+) -> Box<Future<Item = Response<Body>, Error = std::io::Error> + Send> {
+    let (resp_tx, resp_rx) = oneshot::channel();
+    let (_, body) = req.into_parts();
+
+    let body_future = body
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("request error {}", e),
+            )
+        })
+        .concat2();
+    let query_future = body_future
+        .and_then(|body| {
+            let query: Query = match serde_json::from_slice(&body) {
+                Ok(q) => q,
+                Err(e) => {
+                    warn!("could not parse query: {:?}, error {:?}", &body, e);
+                    Query::Indices
+                }
+            };
+            // send to background task: the query and the tx for oneshot answer
+            tx.send(QueryHandle {
+                query: query,
+                oneshot: resp_tx,
+            })
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("request error {}", e),
+                )
+            })
+            .and_then(|_| {
+                // received response from background task
+                resp_rx
+                    .and_then(|answer| {
+                        let response = Response::builder()
+                            .header("Content-Type", " application/json")
+                            .body(Body::from(answer))
+                            .unwrap();
+                        Ok(response)
+                    })
+                    .map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("request error {}", e),
+                        )
+                    })
+            })
+        })
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("request error {}", e),
+            )
+        });
+    Box::new(query_future)
 }

@@ -3,7 +3,7 @@ use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Stores the hash of each time that has been calculated
 pub type SampleRun = HashMap<U256, H256>;
@@ -26,6 +26,17 @@ pub type Archive = HashMap<String, SamplePair>;
 use emulator::SessionRunRequest;
 use emulator::SessionStepRequest;
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// In the future, there should be app emulator
+// commands available here. Also, the enum for these
+// commands should be inside the emulator crate
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+/// A dapp can react in any of these ways:
+/// . Request the machine to run and log the hashes to archive
+/// . Request the machine to give one logged step and save it to archive
+/// . Submit a transaction to the blockchain
+/// . Idle and do nothing
 #[derive(Debug)]
 pub enum Reaction {
     Request(SessionRunRequest),
@@ -35,6 +46,8 @@ pub enum Reaction {
 }
 
 pub trait DApp<T> {
+    /// The function that makes a certain dapp react to the state of the
+    /// instance
     fn react(&state::Instance, &Archive, &T) -> Result<Reaction>;
 }
 

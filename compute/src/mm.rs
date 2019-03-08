@@ -164,7 +164,7 @@ impl DApp<U256> for MM {
                         }
                     }
                 };
-                // divergence proof has not been calculated yet, request it
+                // divergence step log has not been calculated yet, request it
                 return Ok(Reaction::Step(SessionStepRequest {
                     session_id: id,
                     time: divergence_time.as_u64(),
