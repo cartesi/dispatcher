@@ -8,6 +8,7 @@ use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
 use super::transaction::TransactionRequest;
 use super::{Partition, Role, MM};
+use compute::win_by_deadline_or_idle;
 use mm::{MMCtx, MMCtxParsed};
 use partition::{PartitionCtx, PartitionCtxParsed};
 
@@ -18,7 +19,7 @@ pub struct VG();
 // obtained from a simple derive
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #[derive(Serialize, Deserialize)]
-struct VGCtxParsed(
+pub struct VGCtxParsed(
     AddressField,  // challenger
     AddressField,  // claimer
     AddressField,  // machine
@@ -36,21 +37,21 @@ struct VGCtxParsed(
 );
 
 #[derive(Debug)]
-struct VGCtx {
-    challenger: Address,
-    claimer: Address,
-    machine: Address,
-    initial_hash: H256,
-    claimer_final_hash: H256,
-    hash_before_divergence: H256,
-    hash_after_divergence: H256,
-    current_state: String,
-    round_duration: U256,
-    final_time: U256,
-    time_of_last_move: U256,
-    mm_instance: U256,
-    partition_instance: U256,
-    divergence_time: U256,
+pub struct VGCtx {
+    pub challenger: Address,
+    pub claimer: Address,
+    pub machine: Address,
+    pub initial_hash: H256,
+    pub claimer_final_hash: H256,
+    pub hash_before_divergence: H256,
+    pub hash_after_divergence: H256,
+    pub current_state: String,
+    pub round_duration: U256,
+    pub final_time: U256,
+    pub time_of_last_move: U256,
+    pub mm_instance: U256,
+    pub partition_instance: U256,
+    pub divergence_time: U256,
 }
 
 impl From<VGCtxParsed> for VGCtx {
@@ -99,7 +100,7 @@ impl DApp<()> for VG {
             _ => {}
         };
 
-        // if we reach this code, the instance is active
+        // if we reach this code, the instance is active, get role of user
         let role = match instance.concern.user_address {
             cl if (cl == ctx.claimer) => Role::Claimer,
             ch if (ch == ctx.challenger) => Role::Challenger,
@@ -134,7 +135,7 @@ impl DApp<()> for VG {
                     let partition_ctx: PartitionCtx = partition_parsed.into();
 
                     match partition_ctx.current_state.as_ref() {
-                        "ChallengerWon" | "ClaimerWon" => {
+                        "ClaimerWon" => {
                             // claim victory by partition timeout
                             let request = TransactionRequest {
                                 concern: instance.concern.clone(),
@@ -178,7 +179,12 @@ impl DApp<()> for VG {
                     }
                 }
                 "WaitMemoryProveValues" => {
-                    return Ok(Reaction::Idle); // does not concern claimer
+                    return win_by_deadline_or_idle(
+                        &instance.concern,
+                        instance.index,
+                        ctx.time_of_last_move.as_u64(),
+                        ctx.round_duration.as_u64(),
+                    );
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -188,15 +194,63 @@ impl DApp<()> for VG {
             },
             Role::Challenger => match ctx.current_state.as_ref() {
                 "WaitPartition" => {
-                    // pass control to the partition dapp
-                    let partition_instance =
-                        instance.sub_instances.get(0).ok_or(Error::from(
-                            ErrorKind::InvalidContractState(format!(
-                                "There is no partition instance {}",
-                                ctx.current_state
-                            )),
-                        ))?;
-                    return Partition::react(partition_instance, archive, &());
+                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    // deduplicate code with wait partition above
+                    // not quite the same
+                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    let partition_parsed: PartitionCtxParsed =
+                        serde_json::from_str(&partition_instance.json_data)
+                            .chain_err(|| {
+                                format!(
+                            "Could not parse partition instance json_data: {}",
+                            &instance.json_data
+                                )
+                            })?;
+                    let partition_ctx: PartitionCtx = partition_parsed.into();
+
+                    match partition_ctx.current_state.as_ref() {
+                        "ChallengerWon" => {
+                            // claim victory by partition timeout
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "winByPartitionTimeout".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        "DivergenceFound" => {
+                            // start the machine run challenge
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "startMachineRunChallenge".into(),
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                // improve these types by letting the
+                                // dapp submit ethereum_types and convert
+                                // them inside the transaction manager
+                                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        _ => {
+                            // partition is still running,
+                            // pass control to the partition dapp
+                            return Partition::react(
+                                partition_instance,
+                                archive,
+                                &(),
+                            );
+                        }
+                    }
                 }
                 "WaitMemoryProveValues" => {
                     let mm_instance = instance.sub_instances.get(0).ok_or(

@@ -9,7 +9,7 @@ use super::ethereum_types::{Address, H256, U256};
 use super::transaction;
 use super::transaction::TransactionRequest;
 use super::{Role, VG};
-use std::collections::HashSet;
+use vg::{VGCtx, VGCtxParsed};
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -62,11 +62,14 @@ impl From<ComputeCtxParsed> for ComputeCtx {
 }
 
 impl DApp<()> for Compute {
+    /// React to the compute contract, submitting solutions, confirming
+    /// or challenging them when appropriate
     fn react(
         instance: &state::Instance,
         archive: &Archive,
         _: &(),
     ) -> Result<Reaction> {
+        // get context (state) of the compute instance
         let parsed: ComputeCtxParsed =
             serde_json::from_str(&instance.json_data).chain_err(|| {
                 format!(
@@ -77,7 +80,7 @@ impl DApp<()> for Compute {
         let ctx: ComputeCtx = parsed.into();
         trace!("Context for compute (index {}) {:?}", instance.index, ctx);
 
-        // should not happen as it indicates an innactive instance,
+        // these states should not occur as they indicate an innactive instance,
         // but it is possible that the blockchain state changed between queries
         match ctx.current_state.as_ref() {
             "ClaimerMissedDeadline"
@@ -89,7 +92,7 @@ impl DApp<()> for Compute {
             _ => {}
         };
 
-        // if we reach this code, the instance is active
+        // if we reach this code, the instance is active, get user's role
         let role = match instance.concern.user_address {
             cl if (cl == ctx.claimer) => Role::Claimer,
             ch if (ch == ctx.challenger) => Role::Challenger,
@@ -107,7 +110,8 @@ impl DApp<()> for Compute {
                     return win_by_deadline_or_idle(
                         &instance.concern,
                         instance.index,
-                        &ctx,
+                        ctx.time_of_last_move.as_u64(),
+                        ctx.round_duration.as_u64(),
                     );
                 }
                 "WaitingClaim" => {
@@ -123,7 +127,7 @@ impl DApp<()> for Compute {
                         let run_samples = &samples.run;
                         // have we sampled the final time?
                         if let Some(hash) = run_samples.get(&ctx.final_time) {
-                            // then submit the final hash
+                            // if yes, submit the final hash
                             let request = TransactionRequest {
                                 concern: instance.concern.clone(),
                                 value: U256::from(0),
@@ -151,14 +155,45 @@ impl DApp<()> for Compute {
                     }));
                 }
                 "WaitingChallenge" => {
-                    // pass control to the verification game dapp
+                    // we inspect the verification contract
                     let vg_instance = instance.sub_instances.get(0).ok_or(
                         Error::from(ErrorKind::InvalidContractState(format!(
                             "There is no vg instance {}",
                             ctx.current_state
                         ))),
                     )?;
-                    return VG::react(vg_instance, archive, &());
+                    let vg_parsed: VGCtxParsed =
+                        serde_json::from_str(&vg_instance.json_data)
+                            .chain_err(|| {
+                                format!(
+                                    "Could not parse vg instance json_data: {}",
+                                    &vg_instance.json_data
+                                )
+                            })?;
+                    let vg_ctx: VGCtx = vg_parsed.into();
+
+                    match vg_ctx.current_state.as_ref() {
+                        "FinishedClaimerWon" => {
+                            // claim victory in compute contract
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "winByVG".into(),
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        "FinishedChallengerWon" => {
+                            error!("we lost a verification game {:?}", vg_ctx);
+                            return Ok(Reaction::Idle);
+                        }
+                        _ => {
+                            // verification game is still active,
+                            // pass control to the appropriate dapp
+                            return VG::react(vg_instance, archive, &());
+                        }
+                    }
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -223,18 +258,50 @@ impl DApp<()> for Compute {
                     return win_by_deadline_or_idle(
                         &instance.concern,
                         instance.index,
-                        &ctx,
+                        ctx.time_of_last_move.as_u64(),
+                        ctx.round_duration.as_u64(),
                     );
                 }
                 "WaitingChallenge" => {
-                    // pass control to the verification game dapp
+                    // we inspect the verification contract
                     let vg_instance = instance.sub_instances.get(0).ok_or(
                         Error::from(ErrorKind::InvalidContractState(format!(
                             "There is no vg instance {}",
                             ctx.current_state
                         ))),
                     )?;
-                    return VG::react(vg_instance, archive, &());
+                    let vg_parsed: VGCtxParsed =
+                        serde_json::from_str(&vg_instance.json_data)
+                            .chain_err(|| {
+                                format!(
+                                    "Could not parse vg instance json_data: {}",
+                                    &vg_instance.json_data
+                                )
+                            })?;
+                    let vg_ctx: VGCtx = vg_parsed.into();
+
+                    match vg_ctx.current_state.as_ref() {
+                        "FinishedChallengerWon" => {
+                            // claim victory in compute contract
+                            let request = TransactionRequest {
+                                concern: instance.concern.clone(),
+                                value: U256::from(0),
+                                function: "winByVG".into(),
+                                data: vec![Token::Uint(instance.index)],
+                                strategy: transaction::Strategy::Simplest,
+                            };
+                            return Ok(Reaction::Transaction(request));
+                        }
+                        "FinishedClaimerWon" => {
+                            error!("we lost a verification game {:?}", vg_ctx);
+                            return Ok(Reaction::Idle);
+                        }
+                        _ => {
+                            // verification game is still active,
+                            // pass control to the appropriate dapp
+                            return VG::react(vg_instance, archive, &());
+                        }
+                    }
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
@@ -246,10 +313,11 @@ impl DApp<()> for Compute {
     }
 }
 
-fn win_by_deadline_or_idle(
+pub fn win_by_deadline_or_idle(
     concern: &Concern,
     index: U256,
-    ctx: &ComputeCtx,
+    time_of_last_move: u64,
+    round_duration: u64,
 ) -> Result<Reaction> {
     let current_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -257,9 +325,7 @@ fn win_by_deadline_or_idle(
         .as_secs();
 
     // if other party missed the deadline
-    if current_time
-        > ctx.time_of_last_move.as_u64() + ctx.round_duration.as_u64()
-    {
+    if current_time > time_of_last_move + round_duration {
         let request = TransactionRequest {
             concern: concern.clone(),
             value: U256::from(0),

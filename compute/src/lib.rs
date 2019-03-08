@@ -38,6 +38,13 @@ enum Role {
     Challenger,
 }
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// we need to have a proper way to construct machine ids.
+// but this will only make real sense when we have the scripting
+// language or some other means to construct a machine inside the
+// blockchain.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 pub fn build_machine_id(_index: U256, _address: &Address) -> String {
     //return format!("{:x}:{}", address, index);
     return "0000000000000000000000000000000000000000000000008888888888888888"

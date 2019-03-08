@@ -9,8 +9,7 @@ use super::ethabi::Token;
 use super::ethereum_types::{Address, H256, U256};
 use super::transaction::TransactionRequest;
 use super::Role;
-
-use std::collections::HashSet;
+use compute::win_by_deadline_or_idle;
 
 pub struct Partition();
 
@@ -91,7 +90,7 @@ impl DApp<()> for Partition {
             _ => {}
         };
 
-        // if we reach this code, the instance is active
+        // if we reach this code, the instance is active, get user's role
         let role = match instance.concern.user_address {
             cl if (cl == ctx.claimer) => Role::Claimer,
             ch if (ch == ctx.challenger) => Role::Challenger,
@@ -106,7 +105,12 @@ impl DApp<()> for Partition {
         match role {
             Role::Claimer => match ctx.current_state.as_ref() {
                 "WaitingQuery" => {
-                    return Ok(Reaction::Idle); // does not concern claimer
+                    return win_by_deadline_or_idle(
+                        &instance.concern,
+                        instance.index,
+                        ctx.time_of_last_move.as_u64(),
+                        ctx.round_duration.as_u64(),
+                    );
                 }
                 "WaitingHashes" => {
                     // machine id
@@ -185,7 +189,9 @@ impl DApp<()> for Partition {
                         };
                         return Ok(Reaction::Transaction(request));
                     }
-                    // machine not queried yet (power outage?), request all
+                    warn!(
+                        "machine not queried yet (power outage?), request all"
+                    );
                     let sample_points: Vec<u64> = ctx
                         .query_array
                         .clone()
@@ -224,11 +230,12 @@ impl DApp<()> for Partition {
                                     i
                                 )),
                                 ))?;
+                            // get (i + 1)'th time in query array
                             let next_time = ctx.query_array.get(i + 1).ok_or(
                                 Error::from(ErrorKind::InvalidContractState(
                                     format!(
                                     "could not find element {} in query array",
-                                    i
+                                    i + 1
                                 ),
                                 )),
                             )?;
@@ -263,6 +270,7 @@ impl DApp<()> for Partition {
                             };
 
                             if hash != *claimed_hash {
+                                // do we need another partition?
                                 if next_time.as_u64() - time.as_u64() > 1 {
                                     // submit the relevant query
                                     let request = TransactionRequest {
@@ -308,11 +316,13 @@ impl DApp<()> for Partition {
                         }
                         // no disagreement found. important bug!!!!
                         error!(
-                            "bug found, no disagreement in dispute {:?}!!!",
+                            "bug found: no disagreement in dispute {:?}!!!",
                             instance
                         );
                     }
-                    // machine not queried yet (power outage?), request all
+                    warn!(
+                        "machine not queried yet (power outage?), request all"
+                    );
                     let sample_points: Vec<u64> = ctx
                         .query_array
                         .clone()
@@ -325,7 +335,12 @@ impl DApp<()> for Partition {
                     }));
                 }
                 "WaitingHashes" => {
-                    return Ok(Reaction::Idle); // does not concern challenger
+                    return win_by_deadline_or_idle(
+                        &instance.concern,
+                        instance.index,
+                        ctx.time_of_last_move.as_u64(),
+                        ctx.round_duration.as_u64(),
+                    );
                 }
                 _ => {
                     return Err(Error::from(ErrorKind::InvalidContractState(
