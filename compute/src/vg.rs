@@ -198,6 +198,15 @@ impl DApp<()> for VG {
                     // deduplicate code with wait partition above
                     // not quite the same
                     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    // get the partition instance to see if its is finished
+                    let partition_instance =
+                        instance.sub_instances.get(0).ok_or(Error::from(
+                            ErrorKind::InvalidContractState(format!(
+                                "There is no partition instance {}",
+                                ctx.current_state
+                            )),
+                        ))?;
+
                     let partition_parsed: PartitionCtxParsed =
                         serde_json::from_str(&partition_instance.json_data)
                             .chain_err(|| {
