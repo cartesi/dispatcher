@@ -1,6 +1,6 @@
 use super::build_machine_id;
 use super::dispatcher::{AddressField, Bytes32Field, String32Field, U256Field};
-use super::dispatcher::{Archive, DApp, Reaction, SampleStepRequest};
+use super::dispatcher::{Archive, DApp, Reaction, SessionStepRequest};
 use super::emulator::AccessOperation;
 use super::error::Result;
 use super::error::*;
@@ -165,9 +165,9 @@ impl DApp<U256> for MM {
                     }
                 };
                 // divergence proof has not been calculated yet, request it
-                return Ok(Reaction::Step(SampleStepRequest {
-                    id: id,
-                    time: divergence_time.clone(),
+                return Ok(Reaction::Step(SessionStepRequest {
+                    session_id: id,
+                    time: divergence_time.as_u64(),
                 }));
             }
             _ => {}

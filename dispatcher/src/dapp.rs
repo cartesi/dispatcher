@@ -20,24 +20,16 @@ pub struct SamplePair {
     pub step: SampleStep,
 }
 
+/// The total archive, for each machine session
 pub type Archive = HashMap<String, SamplePair>;
 
-#[derive(Debug)]
-pub struct SampleRequest {
-    pub id: String,
-    pub times: HashSet<U256>,
-}
-
-#[derive(Debug)]
-pub struct SampleStepRequest {
-    pub id: String,
-    pub time: U256,
-}
+use emulator::SessionRunRequest;
+use emulator::SessionStepRequest;
 
 #[derive(Debug)]
 pub enum Reaction {
-    Request(SampleRequest),
-    Step(SampleStepRequest),
+    Request(SessionRunRequest),
+    Step(SessionStepRequest),
     Transaction(TransactionRequest),
     Idle,
 }

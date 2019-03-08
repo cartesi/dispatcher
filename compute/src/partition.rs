@@ -2,7 +2,7 @@ use super::build_machine_id;
 use super::dispatcher::{
     AddressField, BoolArray, Bytes32Array, String32Field, U256Array, U256Array5,
 };
-use super::dispatcher::{Archive, DApp, Reaction, SampleRequest};
+use super::dispatcher::{Archive, DApp, Reaction, SessionRunRequest};
 use super::error::Result;
 use super::error::*;
 use super::ethabi::Token;
@@ -134,14 +134,15 @@ impl DApp<()> for Partition {
                                 Some(hash) => hashes.push(hash),
                                 None => {
                                     // some hash not calculated yet, request all
-                                    let sample_points: HashSet<U256> = ctx
+                                    let sample_points: Vec<u64> = ctx
                                         .query_array
                                         .clone()
                                         .into_iter()
+                                        .map(|u| u.as_u64())
                                         .collect();
                                     return Ok(Reaction::Request(
-                                        SampleRequest {
-                                            id: id,
+                                        SessionRunRequest {
+                                            session_id: id,
                                             times: sample_points,
                                         },
                                     ));
@@ -185,10 +186,14 @@ impl DApp<()> for Partition {
                         return Ok(Reaction::Transaction(request));
                     }
                     // machine not queried yet (power outage?), request all
-                    let sample_points: HashSet<U256> =
-                        ctx.query_array.clone().into_iter().collect();
-                    return Ok(Reaction::Request(SampleRequest {
-                        id: id,
+                    let sample_points: Vec<u64> = ctx
+                        .query_array
+                        .clone()
+                        .into_iter()
+                        .map(|u| u.as_u64())
+                        .collect();
+                    return Ok(Reaction::Request(SessionRunRequest {
+                        session_id: id,
                         times: sample_points,
                     }));
                 }
@@ -242,14 +247,15 @@ impl DApp<()> for Partition {
                                 Some(hash) => hash,
                                 None => {
                                     // some hash not calculated yet, request all
-                                    let sample_points: HashSet<U256> = ctx
+                                    let sample_points: Vec<u64> = ctx
                                         .query_array
                                         .clone()
                                         .into_iter()
+                                        .map(|u| u.as_u64())
                                         .collect();
                                     return Ok(Reaction::Request(
-                                        SampleRequest {
-                                            id: id,
+                                        SessionRunRequest {
+                                            session_id: id,
                                             times: sample_points,
                                         },
                                     ));
@@ -307,10 +313,14 @@ impl DApp<()> for Partition {
                         );
                     }
                     // machine not queried yet (power outage?), request all
-                    let sample_points: HashSet<U256> =
-                        ctx.query_array.clone().into_iter().collect();
-                    return Ok(Reaction::Request(SampleRequest {
-                        id: id,
+                    let sample_points: Vec<u64> = ctx
+                        .query_array
+                        .clone()
+                        .into_iter()
+                        .map(|u| u.as_u64())
+                        .collect();
+                    return Ok(Reaction::Request(SessionRunRequest {
+                        session_id: id,
                         times: sample_points,
                     }));
                 }
