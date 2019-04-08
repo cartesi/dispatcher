@@ -203,7 +203,7 @@ fn background_process<T: DApp<()>>(
     }
 
     // Interval at which we poll and dispatch instances
-    let tick_duration = Duration::from_secs(6);
+    let tick_duration = Duration::from_secs(14);
     let interval = Interval::new_interval(tick_duration)
         .map(|_| Message::Tick)
         .map_err(|_| ());
