@@ -2,13 +2,46 @@
 
 COMPLETE THESE INSTRUCTIONS
 
+## Compile protoc
+
+Instructions can be found here
+
+    https://github.com/protocolbuffers/protobuf/blob/master/src/README.md
+
+Install requirementes
+
+    sudo apt-get install autoconf automake libtool curl make g++ unzip
+
+Then compile
+
+    git clone https://github.com/protocolbuffers/protobuf.git
+    cd protobuf
+    git submodule update --init --recursive
+    ./autogen.sh
+
+Then generate `protoc`
+
+    ./configure
+    make
+    make check
+    sudo make install
+    sudo ldconfig # refresh shared library cache.
+
 ## Compile hasher
+
+Install requirements::
+
+    sudo apt-get install gcc libssl-dev pkg-config
 
 Install `protoc`.
 
-Enter the hasher folder and enter `cargo run --bin build-hasher`.
+Enter the hasher folder and enter
 
-Enter the emulator_interface folder and enter `cargo run`.
+    cargo run --bin build-hasher
+
+Enter the emulator_interface folder and enter
+
+    cargo run
 
 # TODOs
 
