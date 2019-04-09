@@ -14,7 +14,6 @@ extern crate serde_derive;
 extern crate log;
 extern crate env_logger;
 extern crate ethabi;
-extern crate ethcore_transaction;
 extern crate hex;
 extern crate hyper;
 extern crate serde;
