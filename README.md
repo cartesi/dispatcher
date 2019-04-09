@@ -27,7 +27,7 @@ Then generate `protoc`
     sudo make install
     sudo ldconfig # refresh shared library cache.
 
-## Compile hasher
+## Compile hasher and emulator_interface
 
 Install requirements::
 
@@ -42,6 +42,16 @@ Enter the hasher folder and enter
 Enter the emulator_interface folder and enter
 
     cargo run
+
+## Install further dependencies
+
+    sudo apt-get install libssl-dev
+
+## Compile
+
+In the root folder
+
+    cargo build
 
 # TODOs
 

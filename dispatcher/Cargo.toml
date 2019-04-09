@@ -6,7 +6,6 @@ version = "0.1.0"
 authors = ["Cartesi Team"]
 
 [dependencies]
-ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
 emulator = { path = "../emulator" }
 error = { path = "../error" }
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
