@@ -127,9 +127,9 @@ impl DApp<U256> for MM {
                                     data: vec![
                                         Token::Uint(instance.index),
                                         Token::Uint(U256::from(access.address)),
-                                        Token::Uint(U256::from(
-                                            access.value_read,
-                                        )),
+                                        Token::FixedBytes(
+                                            access.value_read.to_vec()
+                                        ),
                                         Token::Array(siblings),
                                     ],
                                     strategy: transaction::Strategy::Simplest,
@@ -149,12 +149,12 @@ impl DApp<U256> for MM {
                                     data: vec![
                                         Token::Uint(instance.index),
                                         Token::Uint(U256::from(access.address)),
-                                        Token::Uint(U256::from(
-                                            access.value_read,
-                                        )),
-                                        Token::Uint(U256::from(
-                                            access.value_written,
-                                        )),
+                                        Token::FixedBytes(
+                                            access.value_read.to_vec(),
+                                        ),
+                                        Token::FixedBytes(
+                                            access.value_written.to_vec(),
+                                        ),
                                         Token::Array(siblings),
                                     ],
                                     strategy: transaction::Strategy::Simplest,

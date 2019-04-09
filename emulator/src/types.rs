@@ -108,19 +108,36 @@ impl From<cartesi_base::Proof> for Proof {
 pub struct Access {
     pub operation: AccessOperation,
     pub address: u64,
-    pub value_read: u64,
-    pub value_written: u64,
+    pub value_read: [u8; 8],
+    pub value_written: [u8; 8],
     pub proof: Proof,
+}
+
+fn to_bytes(input: Vec<u8>) -> Option<[u8; 8]> {
+    if input.len() != 8 {
+        None
+    } else {
+        Some([input[0], input[1], input[2], input[3],
+              input[4], input[5], input[6], input[7]])
+    }
 }
 
 impl From<emulator_interface::cartesi_base::Access> for Access {
     fn from(access: emulator_interface::cartesi_base::Access) -> Self {
+        let proof: Proof
+            = access.proof.into_option().expect("proof not found").into();
         Access {
             operation: access.operation.into(),
-            address: access.address,
-            value_read: access.read,
-            value_written: access.written,
-            proof: access.proof.into_option().expect("proof not found").into(),
+            address: proof.address,
+            value_read: to_bytes(
+                access.read.into_option()
+                    .expect("read access not found").content)
+                .expect("read value has the wrong size"),
+            value_written: to_bytes(
+                access.written.into_option()
+                    .expect("write access not found").content)
+                .expect("write value has the wrong size"),
+            proof: proof,
         }
     }
 }
