@@ -381,17 +381,23 @@ impl StateManager {
         let contract = Arc::clone(&concern_data.contract);
         let abi = Arc::clone(&concern_data.abi);
 
+        trace!("AAA");
+
         // call contract function to get its current state
         let function = match abi.function("getState".into()) {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
 
+        trace!("BBB");
+
         let args = match function.encode_input(&U256::from(index).into_tokens())
         {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
+
+        trace!("CCC");
 
         let state = self
             .web3
@@ -422,11 +428,15 @@ impl StateManager {
                 Ok(format!("[{}]", response.join(",\n")))
             });
 
+        trace!("DDD");
+
         // get contract's json data
         let json_data = match state.wait() {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
+
+        trace!("EEE");
 
         // get all the sub instances that the current instance depend on
         let (sub_address, sub_indices): (Vec<Address>, Vec<U256>) =
