@@ -38,15 +38,17 @@ impl EmulatorManager {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // Fix the mess below, but it is mainly a fault of rust's grpc
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        return Box::new(ok((&self)
+        let grpc_request = (&self)
             .client
             .session_run(RequestOptions::new(), req)
             .0
             .wait()
-            .unwrap()
+            .expect("Problem with grpc first future");
+
+        return Box::new(ok(grpc_request
             .1
             .wait()
-            .unwrap()
+            .expect("Problem with gprc second future")
             .0
             .into()));
     }
