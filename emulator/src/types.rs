@@ -17,13 +17,15 @@ pub struct SessionRunRequest {
     pub times: Vec<u64>,
 }
 
-impl From<emulator_interface::manager::SessionRunRequest>
+impl From<emulator_interface::manager_high::SessionRunRequest>
     for SessionRunRequest
 {
-    fn from(result: emulator_interface::manager::SessionRunRequest) -> Self {
+    fn from(
+        result: emulator_interface::manager_high::SessionRunRequest,
+    ) -> Self {
         SessionRunRequest {
             session_id: result.session_id,
-            times: result.times,
+            times: result.final_cycles,
         }
     }
 }
@@ -34,8 +36,12 @@ pub struct SessionRunResult {
     pub hashes: Vec<H256>,
 }
 
-impl From<emulator_interface::manager::SessionRunResult> for SessionRunResult {
-    fn from(result: emulator_interface::manager::SessionRunResult) -> Self {
+impl From<emulator_interface::manager_high::SessionRunResult>
+    for SessionRunResult
+{
+    fn from(
+        result: emulator_interface::manager_high::SessionRunResult,
+    ) -> Self {
         SessionRunResult {
             hashes: result
                 .hashes
@@ -117,26 +123,36 @@ fn to_bytes(input: Vec<u8>) -> Option<[u8; 8]> {
     if input.len() != 8 {
         None
     } else {
-        Some([input[0], input[1], input[2], input[3],
-              input[4], input[5], input[6], input[7]])
+        Some([
+            input[0], input[1], input[2], input[3], input[4], input[5],
+            input[6], input[7],
+        ])
     }
 }
 
 impl From<emulator_interface::cartesi_base::Access> for Access {
     fn from(access: emulator_interface::cartesi_base::Access) -> Self {
-        let proof: Proof
-            = access.proof.into_option().expect("proof not found").into();
+        let proof: Proof =
+            access.proof.into_option().expect("proof not found").into();
         Access {
             operation: access.operation.into(),
             address: proof.address,
             value_read: to_bytes(
-                access.read.into_option()
-                    .expect("read access not found").content)
-                .expect("read value has the wrong size"),
+                access
+                    .read
+                    .into_option()
+                    .expect("read access not found")
+                    .content,
+            )
+            .expect("read value has the wrong size"),
             value_written: to_bytes(
-                access.written.into_option()
-                    .expect("write access not found").content)
-                .expect("write value has the wrong size"),
+                access
+                    .written
+                    .into_option()
+                    .expect("write access not found")
+                    .content,
+            )
+            .expect("write value has the wrong size"),
             proof: proof,
         }
     }
@@ -149,13 +165,15 @@ pub struct SessionStepRequest {
     pub time: u64,
 }
 
-impl From<emulator_interface::manager::SessionStepRequest>
+impl From<emulator_interface::manager_high::SessionStepRequest>
     for SessionStepRequest
 {
-    fn from(result: emulator_interface::manager::SessionStepRequest) -> Self {
+    fn from(
+        result: emulator_interface::manager_high::SessionStepRequest,
+    ) -> Self {
         SessionStepRequest {
             session_id: result.session_id,
-            time: result.time,
+            time: result.initial_cycle,
         }
     }
 }
@@ -166,10 +184,12 @@ pub struct SessionStepResult {
     pub log: Vec<Access>,
 }
 
-impl From<emulator_interface::manager::SessionStepResult>
+impl From<emulator_interface::manager_high::SessionStepResult>
     for SessionStepResult
 {
-    fn from(result: emulator_interface::manager::SessionStepResult) -> Self {
+    fn from(
+        result: emulator_interface::manager_high::SessionStepResult,
+    ) -> Self {
         SessionStepResult {
             log: result
                 .log
