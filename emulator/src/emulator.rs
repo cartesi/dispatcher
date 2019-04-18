@@ -2,9 +2,9 @@
 
 extern crate futures;
 
-use self::futures::future::{ok, Future};
-use emulator_interface::manager;
-use emulator_interface::manager_grpc::*;
+use self::futures::future::{err, ok, Future};
+use emulator_interface::manager_high;
+use emulator_interface::manager_high_grpc::*;
 use error::*;
 use grpc::{ClientStubExt, RequestOptions};
 
@@ -15,15 +15,16 @@ pub use types::{
 
 /// This is an interface that can query (via grpc) a machine server
 pub struct EmulatorManager {
-    client: MachineManagerClient,
+    client: MachineManagerHighClient,
 }
 
 impl EmulatorManager {
     /// Creates a new emulator manager communicating to a certain port
     pub fn new(port: u16) -> Result<EmulatorManager> {
         let client_conf = Default::default();
-        let client: MachineManagerClient =
-            MachineManagerClient::new_plain("::1", port, client_conf).unwrap();
+        let client: MachineManagerHighClient =
+            MachineManagerHighClient::new_plain("127.0.0.1", port, client_conf)
+                .unwrap();
         Ok(EmulatorManager { client: client })
     }
 
@@ -32,9 +33,9 @@ impl EmulatorManager {
         &self,
         request: SessionRunRequest,
     ) -> Box<Future<Item = SessionRunResult, Error = Error> + Send> {
-        let mut req = manager::SessionRunRequest::new();
+        let mut req = manager_high::SessionRunRequest::new();
         req.set_session_id(request.session_id);
-        req.set_times(request.times);
+        req.set_final_cycles(request.times);
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // Fix the mess below, but it is mainly a fault of rust's grpc
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -42,15 +43,22 @@ impl EmulatorManager {
             .client
             .session_run(RequestOptions::new(), req)
             .0
-            .wait()
-            .expect("Problem with grpc first future");
+            .wait();
 
-        return Box::new(ok(grpc_request
-            .1
-            .wait()
-            .expect("Problem with gprc second future")
-            .0
-            .into()));
+        match grpc_request {
+            Ok(response) => {
+                return Box::new(ok(response
+                    .1
+                    .wait()
+                    .expect("Problem with gprc second future")
+                    .0
+                    .into()));
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                return Box::new(err(e.into()));
+            }
+        }
     }
 
     /// Runs one step of the machine (at specified time), returning the
@@ -59,9 +67,9 @@ impl EmulatorManager {
         &self,
         request: SessionStepRequest,
     ) -> Box<Future<Item = SessionStepResult, Error = Error> + Send> {
-        let mut req = manager::SessionStepRequest::new();
+        let mut req = manager_high::SessionStepRequest::new();
         req.set_session_id(request.session_id);
-        req.set_time(request.time);
+        req.set_initial_cycle(request.time);
         return Box::new(ok((&self)
             .client
             .session_step(RequestOptions::new(), req)
