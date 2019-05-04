@@ -6,7 +6,7 @@ fn main() {
         includes: &["../cartesi-grpc"],
         input: &[
             "../cartesi-grpc/cartesi-base.proto",
-            "../cartesi-grpc/manager.proto",
+            "../cartesi-grpc/manager-high.proto",
         ],
         rust_protobuf: true, // generate protobuf messages, not just services
         ..Default::default()
