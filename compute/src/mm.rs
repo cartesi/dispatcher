@@ -107,12 +107,16 @@ impl DApp<U256> for MM {
                         // otherwise, submit one more proof step
                         let access =
                             (&step_log[ctx.history_length.as_usize()]).clone();
-                        let siblings = access
+                        let mut siblings: Vec<_> = access
                             .proof
                             .sibling_hashes
                             .into_iter()
                             .map(|hash| Token::FixedBytes(hash.0.to_vec()))
                             .collect();
+                        trace!("Size of siblings: {}", siblings.len());
+                        // !!!!! This should not be necessary, !!!!!!!
+                        // !!!!! the emulator should do it     !!!!!!!
+                        siblings.reverse();
                         match access.operation {
                             AccessOperation::Read => {
                                 let request = TransactionRequest {
