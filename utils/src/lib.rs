@@ -5,17 +5,13 @@ extern crate log;
 extern crate configuration;
 extern crate env_logger;
 extern crate error;
-extern crate futures_await as futures;
 extern crate time;
 extern crate web3;
 
 pub use error::*;
-use futures::prelude::await;
-use futures::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::Duration;
 use web3::futures::Future;
-use web3::futures::ok;
 use web3::types::{BlockId, BlockNumber};
 use web3::Transport;
 
@@ -25,24 +21,33 @@ pub trait EthExt<T: Transport> {
 
 impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
     fn get_delay(self) -> Box<Future<Item = i64, Error = Error>> {
-        let block = self.block(BlockId::Number(BlockNumber::Latest))
-            .map_err(Error)
-            .ok_or(Error::from(ErrorKind::ChainError(
-                "Latest block not found".to_string(),
-            )))
-            .then(|block| {
-                block_time = block.timestamp
-                    .as_u64() as i64;
-            };
-        let current_time: i64 = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_e| {
-                Error::from(ErrorKind::ChainError(
-                    "Time went backwords".to_string(),
-                ))
-            })?
-            .as_secs() as i64;
-        Box(ok(current_time - block_time))
+        Box::new(
+            self.block(BlockId::Number(BlockNumber::Latest))
+                .and_then(|block| {
+                    block.ok_or(web3::Error::from(
+                        "Latest block not found".to_string(),
+                    ))
+                })
+                .map_err(|_| {
+                    Error::from(ErrorKind::ChainError(
+                        "Latest block not found".to_string(),
+                    ))
+                })
+                .and_then(|block| {
+                    let block_time: i64 = block.timestamp.as_u64() as i64;
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_err(|_e| {
+                            Error::from(ErrorKind::ChainError(
+                                "Time went backwords".to_string(),
+                            ))
+                        })
+                        .map(|duration| {
+                            let current_time = duration.as_secs() as i64;
+                            current_time - block_time
+                        })
+                }),
+        )
     }
 }
 
@@ -65,18 +70,17 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
         info!("Testing Ethereum node's responsiveness");
         let url = config.url.clone();
         let web3_clone = self.web3().clone();
-        Box::new(async_block! {
-            await!(
-                web3_clone
+        Box::new(
+            web3_clone
                 .client_version()
-                .map_err(move |_e| Error::from(
-                    ErrorKind::ChainError(format!(
-                       "no Ethereum node responding at url: {}",
-                       url
-                    ))))
-                .map(|_| ())
-            )
-        })
+                .map_err(move |_e| {
+                    Error::from(ErrorKind::ChainError(format!(
+                        "no Ethereum node responding at url: {}",
+                        url
+                    )))
+                })
+                .map(|_| ()),
+        )
     }
 
     fn node_in_sync(
