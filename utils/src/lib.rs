@@ -15,6 +15,7 @@ use futures::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::Duration;
 use web3::futures::Future;
+use web3::futures::ok;
 use web3::types::{BlockId, BlockNumber};
 use web3::Transport;
 
@@ -23,15 +24,16 @@ pub trait EthExt<T: Transport> {
 }
 
 impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
-    #[async(boxed)]
-    fn get_delay(self) -> Result<i64> {
-        let block = await!(self.block(BlockId::Number(BlockNumber::Latest)))?;
-        let block_time: i64 = block
+    fn get_delay(self) -> Box<Future<Item = i64, Error = Error>> {
+        let block = self.block(BlockId::Number(BlockNumber::Latest))
+            .map_err(Error)
             .ok_or(Error::from(ErrorKind::ChainError(
                 "Latest block not found".to_string(),
-            )))?
-            .timestamp
-            .as_u64() as i64;
+            )))
+            .then(|block| {
+                block_time = block.timestamp
+                    .as_u64() as i64;
+            };
         let current_time: i64 = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_e| {
@@ -40,7 +42,7 @@ impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
                 ))
             })?
             .as_secs() as i64;
-        Ok(current_time - block_time)
+        Box(ok(current_time - block_time))
     }
 }
 
