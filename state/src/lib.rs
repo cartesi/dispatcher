@@ -1,4 +1,4 @@
-#![feature(proc_macro_hygiene, generators, transpose_result)]
+#![feature(transpose_result)]
 
 extern crate configuration;
 extern crate env_logger;
@@ -12,7 +12,6 @@ extern crate db_key;
 extern crate ethabi;
 extern crate ethcore_transaction;
 extern crate ethereum_types;
-extern crate futures_await as futures;
 extern crate leveldb;
 extern crate serde_json;
 extern crate utils;
@@ -22,7 +21,6 @@ use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::{Param, Token};
 use ethereum_types::{Address, U256};
-use futures::prelude::async_block;
 use leveldb::database::Database;
 use leveldb::kv::KV;
 use leveldb::options::{ReadOptions, WriteOptions};
@@ -33,6 +31,9 @@ use std::io::Read;
 use std::sync::Arc;
 use utils::EthWeb3;
 use web3::contract::Options;
+use web3::futures;
+use web3::futures::future::err;
+use web3::futures::future::ok;
 use web3::futures::future::Either;
 use web3::futures::stream;
 use web3::futures::Future;
@@ -177,10 +178,8 @@ impl StateManager {
         let mut concern_cache = match self.get_concern_cache(&concern) {
             Ok(concern) => concern,
             Err(e) => {
-                return Box::new(futures::future::err(
-                    Error::from(e)
-                        .chain_err(|| "error while getting concern_cache"),
-                ));
+                return Box::new(err(Error::from(e)
+                    .chain_err(|| "error while getting concern_cache")));
             }
         };
         trace!("Cached concerns are {:?}", concern_cache);
@@ -190,10 +189,11 @@ impl StateManager {
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
                 None => {
-                    return Box::new(async_block! {
-                    Err(Error::from(ErrorKind::InvalidStateRequest(
-                        String::from("Concern requested not found"),
-                    )))});
+                    return Box::new(err::<_, _>(Error::from(
+                        ErrorKind::InvalidStateRequest(String::from(
+                            "Concern requested not found",
+                        )),
+                    )));
                 }
             }
             .contract,
@@ -264,7 +264,7 @@ impl StateManager {
                         }),
                 )
             } else {
-                Either::B(futures::future::ok(Arc::new(ConcernCache {
+                Either::B(ok(Arc::new(ConcernCache {
                     last_maximum_index: max_index,
                     list_instances: concern_cache.list_instances,
                 })))
@@ -288,10 +288,11 @@ impl StateManager {
             &match self.concern_data.get(&concern) {
                 Some(k) => k,
                 None => {
-                    return Box::new(async_block! {
-                    Err(Error::from(ErrorKind::InvalidStateRequest(
-                        String::from("Concern requested not found"),
-                    )))});
+                    return Box::new(err::<_, _>(Error::from(
+                        ErrorKind::InvalidStateRequest(String::from(
+                            "Concern requested not found",
+                        )),
+                    )));
                 }
             }
             .contract,
