@@ -1,2 +1,2 @@
 [workspace]
-members = ["compute", "hasher", "emulator_interface"]
+members = ["compute"]
