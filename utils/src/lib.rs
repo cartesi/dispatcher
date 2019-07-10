@@ -1,5 +1,3 @@
-#![feature(generators, proc_macro_hygiene)]
-
 #[macro_use]
 extern crate log;
 extern crate configuration;

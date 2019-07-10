@@ -1,4 +1,4 @@
-#![feature(transpose_result)]
+//#![feature(transpose_result)]
 
 extern crate configuration;
 extern crate env_logger;
