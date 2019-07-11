@@ -12,9 +12,11 @@ error = { path = "../error" }
 configuration = { path = "../configuration" }
 emulator_interface = { git = "ssh://git@github.com/cartesi/cartesi-grpc", branch = "9-split-dispatch-computer-repos"}
 httpbis = "~0.7"
-protobuf = "2"
-grpc = "~0.6"
-protoc-rust-grpc = { git = "https://github.com/stepancheg/grpc-rust" }
+protobuf = "~2"
+grpc = { git = "https://github.com/stepancheg/grpc-rust.git", branch = "v0.6" }
 rustc-hex = "2.0.1"
 ethereum-types = "0.4"
 futures = "0.1.25"
+
+[build-dependencies]
+protoc-rust-grpc = "0.6.1"

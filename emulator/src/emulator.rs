@@ -6,6 +6,7 @@ use self::futures::future::{err, ok, Future};
 use emulator_interface::manager_high;
 use emulator_interface::manager_high_grpc::*;
 use error::*;
+
 use grpc::{ClientStubExt, RequestOptions};
 
 pub use types::{
@@ -25,6 +26,11 @@ impl EmulatorManager {
         let client: MachineManagerHighClient =
             MachineManagerHighClient::new_plain("127.0.0.1", port, client_conf)
                 .unwrap();
+        //ClientBuilder::new("127.0.0.1", port)
+        //    .conf(client_conf)
+        //    .build()
+        //    .map(|c| Self::with_client(Arc::new(c)))
+        //    .unwrap();
         Ok(EmulatorManager { client: client })
     }
 

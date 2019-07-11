@@ -22,7 +22,7 @@ error_chain! {
         Env(envy::Error);
         EthKey(ethkey::Error);
         HexParse(rustc_hex::FromHexError);
-        EthAbi(ethabi::Error);
+        //EthAbi(ethabi::Error);
         JsonParse(serde_json::Error);
         Web3Contract(web3::contract::Error);
         LevelDB(leveldb::error::Error);
@@ -31,7 +31,9 @@ error_chain! {
         Hyper(hyper::Error);
     }
     links {
-        Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
+        //Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
+        Web3(web3::Error, web3::error::ErrorKind) #[cfg(unix)];
+        EthAbiLink(ethabi::Error, ethabi::ErrorKind) #[cfg(unix)];
     }
     errors {
         Mpsc(details: String) {

@@ -11,7 +11,7 @@ extern crate structopt;
 #[macro_use]
 extern crate log;
 extern crate ethabi;
-extern crate ethcore_transaction;
+extern crate common_types;
 extern crate ethereum_types;
 extern crate ethjson;
 extern crate ethkey;
@@ -24,7 +24,7 @@ extern crate web3;
 use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
-use ethcore_transaction::{Action, Transaction};
+use common_types::transaction::{Action, Transaction};
 use ethereum_types::U256;
 use ethkey::KeyPair;
 use serde_json::Value;
@@ -182,7 +182,7 @@ impl TransactionManager {
         Box::new(
             web3.clone()
                 .eth()
-                .transaction_count(key.address(), None)
+                .transaction_count(web3::types::H160::from_slice(&key.address().to_vec()[..]), None)
                 .map_err(|e| {
                     error::Error::from(
                         e.chain_err(|| "could not retrieve nonce"),
