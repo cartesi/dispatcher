@@ -10,7 +10,7 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
-ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
+#ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
 ethereum-types = "0.4"
 web3 = { git = "https://github.com/tomusdrw/rust-web3" }
 futures-await = "0.1"

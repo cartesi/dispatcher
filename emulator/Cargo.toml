@@ -10,7 +10,7 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
-emulator_interface = { path = "../emulator_interface" }
+emulator_interface = { git = "ssh://git@github.com/cartesi/cartesi-grpc", branch = "9-split-dispatch-computer-repos"}
 httpbis = "~0.7"
 protobuf = "2"
 grpc = "~0.6"

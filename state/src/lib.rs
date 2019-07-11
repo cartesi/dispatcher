@@ -10,7 +10,7 @@ extern crate serde_derive;
 extern crate log;
 extern crate db_key;
 extern crate ethabi;
-extern crate ethcore_transaction;
+//extern crate ethcore_transaction;
 extern crate ethereum_types;
 extern crate futures_await as futures;
 extern crate leveldb;
