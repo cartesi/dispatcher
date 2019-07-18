@@ -2,8 +2,6 @@
 //! several issues, like estimating gas usage and waiting for
 //! confirmations
 
-#![feature(proc_macro_hygiene, generators)]
-
 extern crate configuration;
 extern crate env_logger;
 extern crate envy;
@@ -13,11 +11,10 @@ extern crate structopt;
 #[macro_use]
 extern crate log;
 extern crate ethabi;
-extern crate ethcore_transaction;
+extern crate common_types;
 extern crate ethereum_types;
 extern crate ethjson;
 extern crate ethkey;
-extern crate futures_await as futures;
 extern crate hex;
 extern crate keccak_hash;
 extern crate rlp;
@@ -27,16 +24,16 @@ extern crate web3;
 use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
-use ethcore_transaction::{Action, Transaction};
+use common_types::transaction::{Action, Transaction};
 use ethereum_types::U256;
 use ethkey::KeyPair;
-use futures::prelude::{async_block, await};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 use std::time;
+use web3::futures::future::err;
 use web3::futures::Future;
 use web3::types::Bytes;
 
@@ -158,101 +155,138 @@ impl TransactionManager {
     pub fn send(
         &self,
         request: TransactionRequest,
-    ) -> Box<Future<Item = (), Error = Error> + Send> {
+    ) -> Box<Future<Item = (), Error = error::Error> + Send> {
         // async_block needs owned values, so let us clone some stuff
         let web3 = Arc::clone(&self.web3);
         let request = request.clone();
         let concern_data = match self.concern_data.get(&request.concern) {
             Some(k) => k,
             None => {
-                return Box::new(async_block! {
-                Err(Error::from(ErrorKind::InvalidTransactionRequest(
-                    String::from("Concern requested not found"),
-                )))});
+                return Box::new(err(Error::from(
+                    ErrorKind::InvalidTransactionRequest(String::from(
+                        "Concern requested not found",
+                    )),
+                )));
             }
         };
         let key = concern_data.key_pair.clone();
         let abi = concern_data.abi.clone();
         let confirmations: usize = (&self).config.confirmations;
 
-        Box::new(async_block! {
-            trace!("Getting nonce");
-            let nonce = await!(web3.eth()
-                               .transaction_count(key.address(), None)
-            ).chain_err(|| "could not retrieve nonce")?;
-            info!("Nonce for {} is {}", key.address(), nonce);
+        trace!("Getting nonce");
+        let web3_gas_price = web3.clone();
+        let web3_gas_usage = web3.clone();
+        let request_gas_usage = request.clone();
+        let key_gas_price = key.clone();
+        let key_gas_usage = key.clone();
+        Box::new(
+            web3.clone()
+                .eth()
+                .transaction_count(web3::types::H160::from_slice(&key.address().to_vec()[..]), None)
+                .map_err(|e| {
+                    error::Error::from(
+                        e.chain_err(|| "could not retrieve nonce"),
+                    )
+                })
+                .and_then(move |nonce| {
+                    trace!("Estimating gas price");
+                    web3_gas_price
+                        .eth()
+                        .gas_price()
+                        .map_err(|e| {
+                            error::Error::from(
+                                e.chain_err(|| "could not retrieve gas price"),
+                            )
+                        })
+                        .map(move |gas_price| (nonce.clone(), gas_price))
+                })
+                .and_then(move |(nonce, gas_price)| {
+                    info!(
+                        "Nonce for {} is {}",
+                        key_gas_price.address().clone(),
+                        nonce.clone()
+                    );
+                    trace!("Gas price estimated as {}", gas_price);
+                    let raw_data_result = abi
+                        .function((&request_gas_usage.function[..]).into())
+                        .and_then(|function| {
+                            function.encode_input(&request_gas_usage.data)
+                        })
+                        .chain_err(|| {
+                            error::Error::from(format!(
+                                "could not encode data {:?} to function {}:",
+                                &request_gas_usage.data,
+                                &request_gas_usage.function
+                            ))
+                        });
+                    // Fix this unwrap below
+                    let raw_data = raw_data_result.unwrap();
+                    trace!("Buiding transaction");
+                    let call_request = web3::types::CallRequest {
+                        from: Some(key_gas_usage.address()),
+                        to: request_gas_usage.concern.contract_address,
+                        gas: None,
+                        gas_price: None,
+                        value: Some(request_gas_usage.value),
+                        data: Some(Bytes(raw_data.clone())),
+                    };
+                    trace!("Estimate total gas usage");
+                    let request_string =
+                        format!("{:?}", request_gas_usage.clone());
+                    web3_gas_usage
+                        .eth()
+                        .estimate_gas(call_request, None)
+                        .map_err(|e| {
+                            error::Error::from(e.chain_err(move || {
+                                format!(
+                                "could not estimate gas usage for call {:?}",
+                                request_string
+                            )
+                            }))
+                        })
+                        .map(move |total_gas| {
+                            (nonce, gas_price, total_gas, raw_data)
+                        })
+                })
+                .and_then(move |(nonce, gas_price, total_gas, raw_data)| {
+                    trace!("Gas usage estimated to be {}", total_gas);
+                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    // Implement other sending strategies
+                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-            trace!("Estimating gas price");
-            let gas_price = await!(web3.eth().gas_price())
-                .chain_err(|| "could not retrieve gas price")?;
-            let raw_data = abi
-                .function((&request.function[..]).into())
-                .and_then(|function| {
-                    function.encode_input(&request.data)
-                }).chain_err(|| format!(
-                    "could not encode data {:?} to function {}:",
-                    &request.data,
-                    &request.function
-                ))?;
-            trace!("Gas price estimated as {}", gas_price);
+                    trace!("Signing transaction");
+                    let signed_tx = Transaction {
+                        action: Action::Call(request.concern.contract_address),
+                        nonce: nonce,
+                        // do something better then double
+                        gas_price: U256::from(2)
+                            .checked_mul(gas_price)
+                            .unwrap(),
+                        // do something better then double
+                        gas: U256::from(2).checked_mul(total_gas).unwrap(),
+                        value: request.value,
+                        data: raw_data,
+                    }
+                    .sign(&key.secret(), Some(69));
 
-            trace!("Buiding transaction");
-            let call_request = web3::types::CallRequest {
-                from: Some(key.address()),
-                to: request.concern.contract_address,
-                gas: None,
-                gas_price: None,
-                value: Some(request.value),
-                data: Some(Bytes(raw_data.clone())),
-            };
-
-            trace!("Estimate total gas usage");
-            let request_string = format!("{:?}", request.clone());
-            let total_gas = await!(web3.eth().estimate_gas(call_request, None))
-                .chain_err(move ||
-                           format!("could not estimate gas usage for call {:?}",
-                                   request_string)
-                )?;
-            trace!("Gas usage estimated to be {}", total_gas);
-
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            // Implement other sending strategies
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-            trace!("Signing transaction");
-            let signed_tx = Transaction {
-                action: Action::Call(request.concern.contract_address),
-                nonce: nonce,
-                // do something better then double
-                gas_price: U256::from(2).checked_mul(gas_price).unwrap(),
-                // do something better then double
-                gas: U256::from(2).checked_mul(total_gas).unwrap(),
-                value: request.value,
-                data: raw_data,
-            }
-            .sign(&key.secret(), Some(69));
-
-            info!("Sending transaction: {:?}", &request);
-            let raw = Bytes::from(rlp::encode(&signed_tx));
-            //let hash = await!(web3.eth().send_raw_transaction(raw));
-            let poll_interval = time::Duration::from_secs(1);
-            let hash = await!(
-                web3::confirm::send_raw_transaction_with_confirmation(
-                    web3.transport().clone(),
-                    raw,
-                    poll_interval,
-                    confirmations,
-                )
-            );
-            match hash {
-                Ok(h) => {
-                   info!("Transaction sent with hash: {:?}", h);},
-                Err(e) => {
-                   warn!("Failed to send transaction. Error {}", e);
-                },
-            };
-
-            Ok(())
-        })
+                    info!("Sending transaction: {:?}", &request);
+                    let raw = Bytes::from(rlp::encode(&signed_tx));
+                    //let hash = await!(web3.eth().send_raw_transaction(raw));
+                    let poll_interval = time::Duration::from_secs(1);
+                    web3::confirm::send_raw_transaction_with_confirmation(
+                        web3.transport().clone(),
+                        raw,
+                        poll_interval,
+                        confirmations,
+                    )
+                    .map_err(|e| {
+                        warn!("Failed to send transaction. Error {}", e);
+                        error::Error::from(e)
+                    })
+                    .map(|hash| {
+                        info!("Transaction sent with hash: {:?}", hash);
+                    })
+                }),
+        )
     }
 }

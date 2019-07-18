@@ -2,14 +2,15 @@ extern crate env_logger;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate grpc;
+extern crate manager;
+extern crate manager_grpc;
+
 #[macro_use]
 extern crate log;
 extern crate protobuf;
 
 pub mod cartesi_base;
 pub mod hasher;
-pub mod manager;
-pub mod manager_grpc;
 
 use hasher::HasherEmulator;
 use manager_grpc::*;

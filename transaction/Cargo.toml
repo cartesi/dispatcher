@@ -15,14 +15,14 @@ configuration = { path = "../configuration" }
 serde = "1.0.0"
 serde_derive = "1.0.0"
 serde_yaml = "0.8"
-ethcore-transaction = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
-ethjson = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
-ethkey = { git = "https://github.com/paritytech/parity-ethereum", branch = "master" }
+ethcore = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
+common-types = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
+ethjson = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
+ethkey = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
 ethereum-types = "0.4"
 keccak-hash = "0.1"
 rlp = { version = "0.3.0", features = ["ethereum"] }
-web3 = { git = "https://github.com/tomusdrw/rust-web3" }
-futures-await = "0.1"
+web3 = { git = "https://github.com/tomusdrw/rust-web3", tag = "v0.6.0" }
 hex = "0.3.2"
 ethabi = "6.1.0"
 serde_json = "1.0"
