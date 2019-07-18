@@ -8,7 +8,7 @@ authors = ["Cartesi Team"]
 [dependencies]
 emulator = { path = "../emulator" }
 error = { path = "../error" }
-web3 = { git = "https://github.com/tomusdrw/rust-web3" }
+web3 = { git = "https://github.com/tomusdrw/rust-web3", tag = "v0.6.0" }
 configuration = { path = "../configuration" }
 transaction = { path = "../transaction" }
 state = { path = "../state" }

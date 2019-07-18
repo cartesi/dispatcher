@@ -27,6 +27,12 @@ Then generate `protoc`
     sudo make install
     sudo ldconfig # refresh shared library cache.
 
+Install rust
+    curl https://sh.rustup.rs -sSf | sh
+
+Add cargo to your path in `.bashrc`
+    export PATH=$PATH:/home/user/.cargo/bin
+
 ## Compile hasher and emulator_interface
 
 Install requirements::
@@ -39,9 +45,8 @@ Enter the hasher folder and enter
 
     cargo run --bin build-hasher
 
-Enter the emulator_interface folder and enter
-
-    cargo run
+Clone and install emulator_interface. Follow the instructions here:
+https://github.com/cartesi/cartesi-grpc
 
 ## Install further dependencies
 
@@ -59,9 +64,9 @@ In the root folder
 - improve error reporting by: adding more chain_err and inserting context inside the error messages
 - implement display for the structs we define and use them in logs
 
-# Infrastructure
+# Dispatcher
 
-This provides the infrastructure to support the development of dApps.
+This provides the dispatcher to support the development of dApps.
 Dapps that follow these guidelines and use our offered infrastructure will be safer, more robust and easier to develop.
 
 ## Goals
@@ -366,4 +371,19 @@ The return of this call is a transaction exactly as described for the Transactio
 The first implementation of the File Manager will act very much like a key-value table.
 It receives a file, returning its Merkle-Tree Hash and stores the file for future retrieval.
 
+## Contributing
+
+Pull requests are welcome. When contributing to this repository, please first discuss the change you wish to make via issue, email, or any other method with the owners of this repository before making a change.
+
+Please note we have a code of conduct, please follow it in all your interactions with the project.
+
+## Authors
+
+* *Diego Nehab*
+
+## License
+[MIT](https://choosealicense.com/licenses/mit/)
+
+
+## Acknowledgments
 
