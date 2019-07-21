@@ -27,7 +27,9 @@
 //! Grpc interface to a machine
 
 extern crate futures;
+extern crate configuration;
 
+use configuration::{TransPort};
 use self::futures::future::{err, ok, Future};
 use emulator_interface::manager_high;
 use emulator_interface::manager_high_grpc::*;
@@ -47,10 +49,10 @@ pub struct EmulatorManager {
 
 impl EmulatorManager {
     /// Creates a new emulator manager communicating to a certain port
-    pub fn new(port: u16) -> Result<EmulatorManager> {
+    pub fn new(emulator_transport: TransPort) -> Result<EmulatorManager> {
         let client_conf = Default::default();
         let client: MachineManagerHighClient =
-            MachineManagerHighClient::new_plain("127.0.0.1", port, client_conf)
+            MachineManagerHighClient::new_plain(&emulator_transport.address, emulator_transport.port, client_conf)
                 .unwrap();
         //ClientBuilder::new("127.0.0.1", port)
         //    .conf(client_conf)
