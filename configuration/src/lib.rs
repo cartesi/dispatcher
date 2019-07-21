@@ -30,6 +30,7 @@
 extern crate env_logger;
 extern crate envy;
 extern crate error;
+extern crate ipaddress;
 
 extern crate serde;
 #[macro_use]
@@ -226,6 +227,11 @@ pub struct Configuration {
     pub query_port: u16,
 }
 
+/// validate a ip address with IPAddress is_valid()
+fn validate_ip_address(ip: &String) -> bool {
+    return ipaddress::IPAddress::is_valid(ip);
+}
+
 /// check if a given transport is well formed (having all valid arguments).
 fn validate_transport(
     validate_address: Option<String>,
@@ -235,11 +241,10 @@ fn validate_transport(
     if validate_address.is_some() || validate_port.is_some() {
         Ok(Some(TransPort {
             address: validate_address
+                .filter(validate_ip_address)
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Transport's address should be specified",
-                ))))?
-                .parse()
-                .chain_err(|| format!("failed to parse address"))?,
+                ))))?,
             port: validate_port
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Transport's port should be specified",
