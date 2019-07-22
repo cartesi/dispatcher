@@ -35,6 +35,7 @@ Install rust
     curl https://sh.rustup.rs -sSf | sh
 
 Add cargo to your path in `.bashrc`
+
     export PATH=$PATH:/home/user/.cargo/bin
 
 ## Compile hasher and emulator_interface
@@ -61,12 +62,6 @@ https://github.com/cartesi/grpc_interfaces
 In the root folder
 
     cargo build
-
-# TODOs
-
-- change this file to reflect changes in the design
-- improve error reporting by: adding more chain_err and inserting context inside the error messages
-- implement display for the structs we define and use them in logs
 
 ## Goals
 
@@ -106,6 +101,8 @@ Every other state in the system should be able to bootstrap from the above ones.
 The purpose of each of these components is briefly described below.
 Later we will give an overview of the Dispatcher Loop, then a more detailed description of each module.
 
+The example illustrated in the picture below describes a dApp that communicates with other Cartesi contracts in order to perform computations.
+
 <img src="components.png" alt="drawing" width="500"/>
 
 ### Dispatcher
@@ -126,8 +123,8 @@ Whenever the dApp needs to send a transaction to the blockchain, it has the poss
 
 ### State Manager
 
-DApps written for Cartesi will work best if their smart contracts have some "getter functions" that are predefined by us, guiding somehow the inner workings of the contract.
-Since these getter functions are standard, we have a component dedicated to retrieve these data, which abstracts away:
+DApps written for Cartesi will work best if their smart contracts have some "getter functions" that are predefined in our specifications, guiding somehow the inner workings of the contract.
+Since these getter functions are standard, we have a component dedicated to retrieve these data, which will abstract away:
 
 - the specific blockchain that we are dealing with and
 - whether we are working with a full or a light node.
@@ -135,14 +132,14 @@ Since these getter functions are standard, we have a component dedicated to retr
 ### DApp Callback
 
 This is where the dApp-specific action takes place.
-In order to make a Cartesi dApp, a developer has to implement three things: 
+In order to make a Cartesi dApp, a developer has to implement three things:
 
 - a few smart contracts,
 - some machines to run in our emulator and
 - the "DApp Callback".
 
 This module is called by the Dispatcher, with all the state information that it needs in order to make decisions.
-The Callback can also access files through the File Manager and finally return some action to the Dispatcher in the form of a transaction.
+This callback can be written in a fully functional way, improving testing and reliability.
 
 ### Configuration File
 
@@ -171,10 +168,10 @@ Imagining that the Dispatcher just woke up, it will perform the following steps 
 1. Open the Configuration File to collect all data that is specific to our user.
 The main content of this file is the list of "concerns" as explained below.
 1. Contact the State Manager to obtain all the blockchain information that is relevant to the user. Example: what is currently going on in the "partition contract", instance 17.
-1. Ask the Transaction Manager which of these instances is being treated now and which needs a reaction from us.
 1. All this information is passed to the DApp Callback, which will have to take a decision on how to proceed (more details later).
-The DApp Callback then returns to the Dispatcher one (or more) transactions that should be sent to the blockchain.
-1. The Dispatcher sends these transactions to the Transaction Manager that will make sure they are inserted into the blockchain in a timely manner.
+The DApp Callback then returns to the Dispatcher one (or more) transactions that should be sent to the blockchain or emulations that should be performed.
+1. In one of these cases, the Dispatcher requests emulations to be performed by the Emulator Manager.
+1. Otherwise, it sends the requested transactions to the Transaction Manager that will make sure they are inserted into the blockchain in a timely manner.
 
 ## Configuration File
 
@@ -207,10 +204,12 @@ This helps trim out the instances that need no more attention.
 - `bool isConcerned(uint instance, address player)` There should be a pure function to determine if a certain player should be concerned with a certain instance.
 Typically, this can be achieved by simply storing a list of concerned users and checking against it.
 - `uint getNonce(uint instance)` Each instance should have a nonce that is incremented in every transaction (that is not reversed, of course).
-This nonce is important in various moments for the off-chain component to decide on how to react.
+This nonce will be important in various moments for the off-chain component to decide on how to react.
 - `bytes getState(uint instance)` This pure function returns the current state of one particular instance.
 Note that all data which is necessary for players to react to this instance should be returned by this function, although not necessarily the full state of the contract.
 For example, in the case of partition, one possible return for this function would contain something like `[nonce: 5, state: 2, queryArray: [0, 200, 400, 600]]` encoded appropriately.
+- `getSubInstances(uint instance)` this function returns other pairs `(address, instance)` of other smart contracts and instances that are relevante for the user.
+For example, a verification game may depend on a partition instance stored in another contract.
 
 ## State Manager
 
@@ -220,13 +219,13 @@ The responsibilities of the State Manager are:
 These queries should also include the `nonce` each instance,
 - get the current state of the contract,
 - cache this information for faster retrieval and
-- do all of the above work efficiently with both a full or a light Ethereum node.
+- in the future, do all of the above work efficiently with both a full or a light Ethereum node.
 
 The state of this module can be fully bootstrapped from the information present in the blokchain, but caching is essential to get any acceptable performance.
 
 #### Calls
 
-The first query that the SM has a pair (contract, address) as input:
+The first query that the SM can perform has a pair (contract, address) as input:
 
     { contract: 0xf778b86fa74e846c4f0a1fbd1335fe81c00a0c91,
       address: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0
@@ -250,7 +249,7 @@ The response of this query gives simply the result the `getState` call:
       queryArray: [0, 200, 400, 600]
     }
 
-where the above could be encoded into a binary according to the Ethereum ABI.
+where the above could be encoded according to the Ethereum ABI.
 
 #### State
 
@@ -325,7 +324,7 @@ The return of this message is simply a OK/ERROR status.
 After receiving such a message, the Transaction Manager will keep trying to send the above transaction: within the specified deadline, trying to minimize the cost and not going over the value `max_price`.
 While the current process is trying to push this transaction, it is marked as "being handled" for the purpose of the request described below.
 
-Another query that can be made to the Transaction Manager sees if some instance/nonce is being handled or not:
+Another query that will be implemented in the Transaction Manager sees if some instance/nonce is being handled or not:
 
     { origin: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0,
       destination: 0xf778b86fa74e846c4f0a1fbd1335fe81c00a0c91,
@@ -356,14 +355,14 @@ The input should look like this:
       address: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0,
       instance: 28,
       nonce: 23,
-      state: "0xc6888fa1000000000000000000000000000"
+      state: "[state: 2, queryArray: [0, 200, 400, 600]]"
+      archive: [{step = 0, hash = 0x56ab3857c7461100374bff64da462789}]
     }
 
-Note that `state` is the encoded form of something like: `[state: 2, queryArray: [0, 200, 400, 600]]`.
+Note that `state` is the encoded in Json and includes all the sub-instances of this particular instance.
+The list contained in `archive` includes all the computations already performed by the emulator manager.
 
-After receiving this call, the DApp Callback can use the network and interact with the File Manager until it is ready to submit a response in the form of a transaction.
-
-The return of this call is a transaction exactly as described for the Transaction Manager.
+After receiving this call, the DApp Callback should submit a response to the dispatcher in the form of either a transaction or a request for further computations to be emulated.
 
 ## File Manager
 
@@ -385,4 +384,10 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 
 ## Acknowledgments
+
+# TODOs
+
+- change this file to reflect changes in the design
+- improve error reporting by: adding more chain_err and inserting context inside the error messages
+- implement display for the structs we define and use them in logs
 
