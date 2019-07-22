@@ -1,25 +1,28 @@
-# Installation
+# Dispatcher
 
-COMPLETE THESE INSTRUCTIONS
+This repository provides the infrastructure to support the development of dApps.
+Dapps that follow these guidelines and use our offered infrastructure will be safer, more robust and easier to develop.
 
-## Compile protoc
+## Getting Started
 
-Instructions can be found here
+### Requirements
+
+Follow this instructions to compile protoc:
 
     https://github.com/protocolbuffers/protobuf/blob/master/src/README.md
 
-Install requirementes
+Install requirements:
 
     sudo apt-get install autoconf automake libtool curl make g++ unzip
 
-Then compile
+Then compile:
 
     git clone https://github.com/protocolbuffers/protobuf.git
     cd protobuf
     git submodule update --init --recursive
     ./autogen.sh
 
-Then generate `protoc`
+Generate `protoc`
 
     ./configure
     make
@@ -46,7 +49,7 @@ Enter the hasher folder and enter
     cargo run --bin build-hasher
 
 Clone and install emulator_interface. Follow the instructions here:
-https://github.com/cartesi/cartesi-grpc
+https://github.com/cartesi/grpc_interfaces
 
 ## Install further dependencies
 
@@ -63,11 +66,6 @@ In the root folder
 - change this file to reflect changes in the design
 - improve error reporting by: adding more chain_err and inserting context inside the error messages
 - implement display for the structs we define and use them in logs
-
-# Dispatcher
-
-This provides the dispatcher to support the development of dApps.
-Dapps that follow these guidelines and use our offered infrastructure will be safer, more robust and easier to develop.
 
 ## Goals
 
@@ -379,7 +377,7 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 ## Authors
 
-* *Diego Nehab*
+* *Augusto Teixeira*
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
