@@ -31,6 +31,7 @@ Generate `protoc`
     sudo ldconfig # refresh shared library cache.
 
 Install rust
+
     curl https://sh.rustup.rs -sSf | sh
 
 Add cargo to your path in `.bashrc`
