@@ -20,23 +20,14 @@ note right
   current and ancestor nonce
 end note
 SM -> D : List (contract, instace)
-D -> TM : Check pending instances
-note right
-  For each instance, verify
-  with the transaction manager
-  what is already being treated
-end note
-TM -> D : List (pending)
 D -> DC : Get reaction to instance
-activate DC
-note over SM
+note right
   For each instance that requires
   a response, get the appropriate
-  transactions
+  transactions or emulator requests
 end note
-DC -> others : Files/Emulations
-others -> DC : Emulations hashes
-DC -> D : Transaction to be submitted
-deactivate DC
+DC -> D : Transaction or emulations requested
+D -> others : Files/Emulations
+others -> D : Emulations hashes
 D -> TM : Submit transaction
 @enduml
