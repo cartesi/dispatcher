@@ -22,9 +22,17 @@ def special_match(strg, search=re.compile(r'[^ (){}\[\],]').search):
 import pprint
 pp = pprint.PrettyPrinter(indent=4, width=78)
 
-import urllib2, json
-url = "http://127.0.0.1:3002"
-service = urllib2.urlopen(url)
+import requests, json
+
+# get the url from command line argument
+
+if len(sys.argv) != 2:
+    print("Usage: python watcher.py <service url>")
+    sys.exit(1)
+
+# url = "http://127.0.0.1:3002"
+url = sys.argv[1]
+service = requests.get(url)
 
 def format_array(n, t, a):
     return json.dumps([format_type(n, t, k) for k in a[0:10]])
