@@ -383,7 +383,7 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 Note: This component currently has dependencies that are licensed under the GNU GPL, version 3, and so you should treat this component as a whole as being under the GPL version 3. But all Cartesi-written code in this component is licensed under the Apache License, version 2, or a compatible permissive license, and can be used independently under the Apache v2 license. After this component is rewritten, the entire component will be released under the Apache v2 license.
 The dispatcher repository and all contributions are licensed under
-[GPL 3](https://www.gnu.org/licenses/gpl-3.0.en.html). Please review our [LICENSE](https://github.com/cartesi/dispatcher/LICENSE) file.
+[GPL 3](https://www.gnu.org/licenses/gpl-3.0.en.html). Please review our [LICENSE](https://github.com/cartesi/dispatcher/blob/master/LICENSE) file.
 
 
 ## Acknowledgments
