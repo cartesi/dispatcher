@@ -373,7 +373,7 @@ It receives a file, returning its Merkle-Tree Hash and stores the file for futur
 
 Thank you for your interest in Cartesi! Head over to our [Contributing Guidelines](https://github.com/cartesi/dispatcher/blob/master/CONTRIBUTING.md) for instructions on how to sign our Contributors Agreement and get started with Cartesi!
 
-Please note we have a code of conduct, please follow it in all your interactions with the project.
+Please note we have a [Code of Conduct](https://github.com/cartesi/dispatcher/blob/master/CODE_OF_CONDUCT.md), please follow it in all your interactions with the project.
 
 ## Authors
 
