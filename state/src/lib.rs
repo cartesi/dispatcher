@@ -414,7 +414,7 @@ impl StateManager {
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
 
-        let args = match function.encode_input(&U256::from(index).into_tokens())
+        let args = match function.encode_input(&(U256::from(index), Address::from(0000000000000000000000000000000000000001)).into_tokens())
         {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),

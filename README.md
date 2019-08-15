@@ -205,7 +205,7 @@ This helps trim out the instances that need no more attention.
 Typically, this can be achieved by simply storing a list of concerned users and checking against it.
 - `uint getNonce(uint instance)` Each instance should have a nonce that is incremented in every transaction (that is not reversed, of course).
 This nonce will be important in various moments for the off-chain component to decide on how to react.
-- `bytes getState(uint instance)` This pure function returns the current state of one particular instance.
+- `bytes getState(uint instance, address)` This pure function returns the current state of one particular instance.
 Note that all data which is necessary for players to react to this instance should be returned by this function, although not necessarily the full state of the contract.
 For example, in the case of partition, one possible return for this function would contain something like `[nonce: 5, state: 2, queryArray: [0, 200, 400, 600]]` encoded appropriately.
 - `getSubInstances(uint instance)` this function returns other pairs `(address, instance)` of other smart contracts and instances that are relevante for the user.
