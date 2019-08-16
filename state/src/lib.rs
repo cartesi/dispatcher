@@ -460,7 +460,7 @@ impl StateManager {
             match contract
                 .query(
                     "getSubInstances",
-                    U256::from(index),
+                    (U256::from(index), concern.user_address),
                     None,
                     Options::default(),
                     None,

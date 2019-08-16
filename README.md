@@ -208,7 +208,7 @@ This nonce will be important in various moments for the off-chain component to d
 - `bytes getState(uint instance, address)` This pure function returns the current state of one particular instance.
 Note that all data which is necessary for players to react to this instance should be returned by this function, although not necessarily the full state of the contract.
 For example, in the case of partition, one possible return for this function would contain something like `[nonce: 5, state: 2, queryArray: [0, 200, 400, 600]]` encoded appropriately.
-- `getSubInstances(uint instance)` this function returns other pairs `(address, instance)` of other smart contracts and instances that are relevante for the user.
+- `getSubInstances(uint instance, address)` this function returns other pairs `(address, instance)` of other smart contracts and instances that are relevante for the user.
 For example, a verification game may depend on a partition instance stored in another contract.
 
 ## State Manager
