@@ -15,10 +15,10 @@ configuration = { path = "../configuration" }
 serde = "1.0.0"
 serde_derive = "1.0.0"
 serde_yaml = "0.8"
-ethcore = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
-common-types = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
-ethjson = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
-ethkey = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
+ethcore = { git = "https://github.com/cartesi-corp/parity-ethereum", branch = "stable-fixed" }
+common-types = { git = "https://github.com/cartesi-corp/parity-ethereum", branch = "stable-fixed" }
+ethjson = { git = "https://github.com/cartesi-corp/parity-ethereum", branch = "stable-fixed" }
+ethkey = { git = "https://github.com/cartesi-corp/parity-ethereum", branch = "stable-fixed" }
 ethereum-types = "0.4"
 keccak-hash = "0.1"
 rlp = { version = "0.3.0", features = ["ethereum"] }
