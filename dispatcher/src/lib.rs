@@ -135,7 +135,7 @@ impl Dispatcher {
         let state_manager = StateManager::new(config.clone())?;
 
         info!("Creating emulator client");
-        let emulator = EmulatorManager::new(config.emulator_port)?;
+        let emulator = EmulatorManager::new(config.emulator_transport.clone())?;
 
         info!("Creating archive");
         let current_archive = Archive::new();

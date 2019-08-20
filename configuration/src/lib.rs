@@ -30,6 +30,7 @@
 extern crate env_logger;
 extern crate envy;
 extern crate error;
+extern crate ipaddress;
 
 extern crate serde;
 #[macro_use]
@@ -132,6 +133,24 @@ impl Concern {
     }
 }
 
+/// A transport containing ip address and port
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TransPort {
+    pub address: String,
+    pub port: u16,
+}
+
+impl fmt::Display for TransPort {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Address: {},\
+             Port: {}",
+            self.address, self.port
+        )
+    }
+}
+
 /// Structure for parsing configurations, both Environment and CLI arguments
 #[derive(StructOpt, Deserialize, Debug)]
 #[structopt(name = "basic")]
@@ -166,6 +185,9 @@ struct EnvCLIConfiguration {
     /// Port for emulator grpc
     #[structopt(long = "emulator_port")]
     emulator_port: Option<u16>,
+    /// Address for emulator grpc
+    #[structopt(long = "emulator_address")]
+    emulator_address: Option<String>,
     /// Number of confirmations for transaction
     #[structopt(long = "confirmations")]
     confirmations: Option<usize>,
@@ -184,7 +206,7 @@ struct FileConfiguration {
     main_concern: Option<FullConcern>,
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
-    emulator_port: Option<u16>,
+    emulator_transport: Option<TransPort>,
     confirmations: Option<usize>,
     query_port: Option<u16>,
 }
@@ -200,9 +222,39 @@ pub struct Configuration {
     pub concerns: Vec<Concern>,
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
-    pub emulator_port: u16,
+    pub emulator_transport: TransPort,
     pub confirmations: usize,
     pub query_port: u16,
+}
+
+/// validate a ip address with IPAddress is_valid()
+fn validate_ip_address(ip: &String) -> bool {
+    return ipaddress::IPAddress::is_valid(ip);
+}
+
+/// check if a given transport is well formed (having all valid arguments).
+fn validate_transport(
+    validate_address: Option<String>,
+    validate_port: Option<u16>,
+) -> Result<Option<TransPort>> {
+    // if some option is Some, both should be
+    if validate_address.is_some() || validate_port.is_some() {
+        Ok(Some(TransPort {
+            address: validate_address
+                .filter(validate_ip_address)
+                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+                    "Transport's address should be specified",
+                ))))?
+                .parse()
+                .chain_err(|| format!("failed to parse address"))?,
+            port: validate_port
+                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+                    "Transport's port should be specified",
+                ))))?,
+        }))
+    } else {
+        Ok(None)
+    }
 }
 
 // !!!!!!!!!!!
@@ -219,7 +271,7 @@ impl fmt::Display for Configuration {
              Main concern: {}\
              Number of concerns: {}\
              Working path: {:?}\
-             Emulator port: {}\
+             Emulator transport: {}\
              Number of onfirmations: {}\
              Query port: {}",
             self.url,
@@ -229,7 +281,7 @@ impl fmt::Display for Configuration {
             self.main_concern,
             self.concerns.len(),
             self.working_path,
-            self.emulator_port,
+            self.emulator_transport,
             self.confirmations,
             self.query_port,
         )
@@ -371,13 +423,24 @@ fn combine_config(
             "Need to provide working path (config file, command line or env)",
         ))))?);
 
-    // determine emulator port (cli -> env -> config)
-    let emulator_port: u16 = cli_config
-        .emulator_port
-        .or(env_config.emulator_port)
-        .or(file_config.emulator_port)
+    info!("determine cli emulator transport");
+    let cli_emulator_transport = validate_transport(
+        cli_config.emulator_address,
+        cli_config.emulator_port,
+    )?;
+
+    info!("determine env emulator transport");
+    let env_emulator_transport = validate_transport(
+        env_config.emulator_address,
+        env_config.emulator_port,
+    )?;
+
+    // determine emulator transport (cli -> env -> config)
+    let emulator_transport = cli_emulator_transport
+        .or(env_emulator_transport)
+        .or(file_config.emulator_transport)
         .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Need a port for the emulator (config file, command line or env)",
+            "Need to provide emulator transport (config file, command line or env)",
         ))))?;
 
     let query_port: u16 = cli_config
@@ -454,7 +517,7 @@ fn combine_config(
         concerns: concerns,
         working_path: working_path,
         abis: abis,
-        emulator_port: emulator_port,
+        emulator_transport: emulator_transport,
         confirmations: confirmations,
         query_port: query_port,
     })
