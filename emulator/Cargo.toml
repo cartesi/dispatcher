@@ -10,7 +10,7 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
-emulator_interface = { git = "ssh://git@github.com/cartesi-corp/grpc-interfaces", tag = "v0.1.0-rc.1"}
+emulator_interface = { git = "ssh://git@github.com/cartesi/grpc-interfaces", tag = "v0.1.0-rc.1"}
 httpbis = "~0.7"
 protobuf = "=2.7.0"
 grpc = { git = "https://github.com/stepancheg/grpc-rust.git", branch = "v0.6" }
