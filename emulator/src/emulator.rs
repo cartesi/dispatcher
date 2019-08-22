@@ -34,12 +34,13 @@ use self::futures::future::{err, ok, Future};
 use emulator_interface::manager_high;
 use emulator_interface::manager_high_grpc::*;
 use error::*;
+use emulator_interface::cartesi_base::*;
 
 use grpc::{ClientStubExt, RequestOptions};
 
 pub use types::{
     Access, AccessOperation, Proof, SessionRunRequest, SessionRunResult,
-    SessionStepRequest, SessionStepResult,
+    SessionStepRequest, SessionStepResult, NewSessionRequest,
 };
 
 /// This is an interface that can query (via grpc) a machine server
@@ -107,6 +108,27 @@ impl EmulatorManager {
         return Box::new(ok((&self)
             .client
             .session_step(RequestOptions::new(), req)
+            .0
+            .wait()
+            .unwrap()
+            .1
+            .wait()
+            .unwrap()
+            .0
+            .into()));
+    }
+
+    /// TODO: Fill in the funtion description
+    pub fn new_session(
+        &self,
+        request: NewSessionRequest,
+    ) -> Box<Future<Item = Hash, Error = Error> + Send> {
+        let mut req = manager_high::NewSessionRequest::new();
+        req.set_session_id(request.session_id);
+        req.set_machine(request.machine);
+        return Box::new(ok((&self)
+            .client
+            .new_session(RequestOptions::new(), req)
             .0
             .wait()
             .unwrap()

@@ -36,6 +36,26 @@ extern crate rustc_hex;
 use self::ethereum_types::H256;
 use emulator_interface::cartesi_base;
 
+/// Representation of a request for new session
+#[derive(Debug, Clone)]
+pub struct NewSessionRequest {
+    pub machine: emulator_interface::cartesi_base::MachineRequest,
+    pub session_id: String,
+}
+
+impl From<emulator_interface::manager_high::NewSessionRequest>
+    for NewSessionRequest
+{
+    fn from(
+        result: emulator_interface::manager_high::NewSessionRequest,
+    ) -> Self {
+        NewSessionRequest {
+            machine: result.machine.unwrap(),
+            session_id: result.session_id,
+        }
+    }
+}
+
 /// Representation of a request for running the machine
 #[derive(Debug, Clone)]
 pub struct SessionRunRequest {
