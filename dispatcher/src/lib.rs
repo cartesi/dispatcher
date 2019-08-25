@@ -51,7 +51,7 @@ use std::str;
 
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
-pub use emulator::{SessionRunRequest, SessionStepRequest};
+pub use emulator::{SessionRunRequest, SessionStepRequest, NewSessionRequest,};
 pub use error::*;
 use ethereum_types::{H256, U256};
 use hyper::service::service_fn;
@@ -418,6 +418,17 @@ fn execute_reaction<T: DApp<()>>(
                             &transaction_manager,
                         )
                     }
+                    Reaction::NewSession(new_session_request) => {
+                        let current_archive_clone =
+                            assets.current_archive.clone();
+                        process_new_session_request(
+                            main_concern,
+                            index,
+                            new_session_request,
+                            &emulator,
+                            current_archive_clone,
+                        )
+                    }
                     Reaction::Idle => {
                         Box::new(web3::futures::future::ok::<(), _>(()))
                     }
@@ -465,8 +476,7 @@ fn process_run_request(
                         run_request.session_id.clone(),
                         U256::from(time),
                         hash.clone(),
-                    );
-                    Ok(())
+                    )
                 })
                 .collect();
             match store_result_in_archive.chain_err(|| {
@@ -512,13 +522,17 @@ fn process_step_request(
                     main_concern, index, step_request, resulting_step
                 );
                 // add results of step to archive
-                add_step(
+                match add_step(
                     &mut current_archive,
                     step_request.session_id.clone(),
                     U256::from(step_request.time),
                     resulting_step.log.to_vec(),
-                );
-                return web3::futures::future::ok::<(), _>(());
+                ) {
+                    Ok(_) => return web3::futures::future::ok::<(), _>(()),
+                    Err(e) => {
+                        return web3::futures::future::err(e);
+                    }
+                }
             }),
     );
 }
@@ -552,17 +566,58 @@ fn process_transaction_request(
     )
 }
 
-pub fn add_run(archive: &mut Archive, id: String, time: U256, hash: H256) {
-    let samples = archive.entry(id.clone()).or_insert(SamplePair {
-        run: SampleRun::new(),
-        step: SampleStep::new(),
-    });
-    if let Some(s) = samples.run.insert(time, hash) {
-        warn!(
-            "Machine {} at time {} recomputed, run value {:?}",
-            id, time, s
-        );
-    }
+fn process_new_session_request(
+    main_concern: Concern,
+    index: usize,
+    new_session_request: NewSessionRequest,
+    emulator: &EmulatorManager,
+    current_archive_arc: Arc<Mutex<Archive>>,
+) -> Box<Future<Item = (), Error = Error> + Send> {
+    return Box::new(emulator
+        .new_session(NewSessionRequest {
+            machine: new_session_request.machine.clone(),
+            session_id: new_session_request.session_id.clone(),
+        })
+        .map_err(|e| {
+            Error::from(ErrorKind::GrpcError(format!(
+                "could not run emulator: {}",
+                e
+            )))
+        })
+        .then(move |grpc_result| {
+            let mut current_archive = current_archive_arc.lock().unwrap();
+            let resulting_hash = grpc_result.unwrap();
+            info!(
+                "New Session. Concern {:?}, index {}, request {:?}, answer: {:?}",
+                main_concern, index, new_session_request, resulting_hash
+            );
+            // add new session to archive
+            add_new_session(
+                &mut current_archive,
+                new_session_request.session_id.clone(),
+            );
+            return web3::futures::future::ok::<(), _>(());
+        }),
+    );
+}
+
+pub fn add_run(
+    archive: &mut Archive,
+    id: String,
+    time: U256,
+    hash: H256
+    ) -> Result<()> {
+    return archive
+            .get_mut(&id)
+            .and_then(|entry| {
+                entry.run.insert(time, hash);
+                warn!(
+                    "Machine {} at time {} recomputed, run value {:?}",
+                    id, time, hash
+                );
+                Some(())
+            })
+            .ok_or(Error::from(format!("Fail to insert run to the Archive")))
 }
 
 pub fn add_step(
@@ -570,14 +625,26 @@ pub fn add_step(
     id: String,
     time: U256,
     log: dapp::StepLog,
+) -> Result<()> {
+    return archive
+            .get_mut(&id)
+            .and_then(|entry| {
+                entry.step.insert(time, log.clone());
+                warn!("Machine {} at time {} recomputed, step {:?}", id, time, log);
+                Some(())
+            })
+            .ok_or(Error::from(format!("Fail to insert step to the Archive")))
+}
+
+pub fn add_new_session(
+    archive: &mut Archive,
+    id: String,
 ) {
-    let samples = archive.entry(id.clone()).or_insert(SamplePair {
+    archive.entry(id.clone()).or_insert(SamplePair {
         run: SampleRun::new(),
         step: SampleStep::new(),
     });
-    if let Some(s) = samples.step.insert(time, log) {
-        warn!("Machine {} at time {} recomputed, step {:?}", id, time, s);
-    }
+    warn!("Machine {} initialized", id);
 }
 
 // a replier is a tokio task that passes queries about the state of the

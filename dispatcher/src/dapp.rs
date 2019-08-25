@@ -51,6 +51,7 @@ pub type Archive = HashMap<String, SamplePair>;
 
 use emulator::SessionRunRequest;
 use emulator::SessionStepRequest;
+use emulator::NewSessionRequest;
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // In the future, there should be app emulator
@@ -68,6 +69,7 @@ pub enum Reaction {
     Request(SessionRunRequest),
     Step(SessionStepRequest),
     Transaction(TransactionRequest),
+    NewSession(NewSessionRequest),
     Idle,
 }
 
