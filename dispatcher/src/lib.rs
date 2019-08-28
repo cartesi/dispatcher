@@ -391,6 +391,10 @@ fn execute_reaction<T: DApp<()>>(
                     Reaction::Request(run_request) => {
                         let current_archive_clone =
                             assets.current_archive.clone();
+                        // check if the machine has been initiated yet
+                        if !is_valid_session(run_request.session_id.clone(), &current_archive_clone) {
+                            return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
+                        }
                         process_run_request(
                             main_concern,
                             index,
@@ -402,6 +406,10 @@ fn execute_reaction<T: DApp<()>>(
                     Reaction::Step(step_request) => {
                         let current_archive_clone =
                             assets.current_archive.clone();
+                        // check if the machine has been initiated yet
+                        if !is_valid_session(step_request.session_id.clone(), &current_archive_clone) {
+                            return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
+                        }
                         process_step_request(
                             main_concern,
                             index,
@@ -421,13 +429,17 @@ fn execute_reaction<T: DApp<()>>(
                     Reaction::NewSession(new_session_request) => {
                         let current_archive_clone =
                             assets.current_archive.clone();
-                        process_new_session_request(
-                            main_concern,
-                            index,
-                            new_session_request,
-                            &emulator,
-                            current_archive_clone,
-                        )
+                        // check if the machine has been initiated yet
+                        if !is_valid_session(new_session_request.session_id.clone(), &current_archive_clone) {
+                            process_new_session_request(
+                                main_concern,
+                                index,
+                                new_session_request,
+                                &emulator,
+                                current_archive_clone,
+                            );
+                        }
+                        Box::new(web3::futures::future::ok::<(), _>(()))
                     }
                     Reaction::Idle => {
                         Box::new(web3::futures::future::ok::<(), _>(()))
@@ -710,4 +722,9 @@ fn replier(
             )
         });
     Box::new(query_future)
+}
+
+// checks if the given session_id has been initiated
+fn is_valid_session(id: String, current_archive_arc: &Arc<Mutex<Archive>>) -> bool {
+    current_archive_arc.lock().unwrap().get(&id).is_some()
 }
