@@ -118,7 +118,8 @@ impl EmulatorManager {
             .into()));
     }
 
-    /// TODO: Fill in the funtion description
+    /// Sends a new machine session request to the machine manager
+    /// returns the machine's hash
     pub fn new_session(
         &self,
         request: NewSessionRequest,
