@@ -392,7 +392,7 @@ fn execute_reaction<T: DApp<()>>(
                         let current_archive_clone =
                             assets.current_archive.clone();
                         // check if the machine has been initiated yet
-                        if !is_valid_session(run_request.session_id.clone(), &current_archive_clone) {
+                        if !is_valid_session(run_request.session_id.clone(), &current_archive) {
                             return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
                         }
                         process_run_request(
@@ -407,7 +407,7 @@ fn execute_reaction<T: DApp<()>>(
                         let current_archive_clone =
                             assets.current_archive.clone();
                         // check if the machine has been initiated yet
-                        if !is_valid_session(step_request.session_id.clone(), &current_archive_clone) {
+                        if !is_valid_session(step_request.session_id.clone(), &current_archive) {
                             return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
                         }
                         process_step_request(
@@ -430,7 +430,8 @@ fn execute_reaction<T: DApp<()>>(
                         let current_archive_clone =
                             assets.current_archive.clone();
                         // check if the machine has been initiated yet
-                        if !is_valid_session(new_session_request.session_id.clone(), &current_archive_clone) {
+                        trace!("[execute_reaction] Create new session");
+                        if !is_valid_session(new_session_request.session_id.clone(), &current_archive) {
                             process_new_session_request(
                                 main_concern,
                                 index,
@@ -725,6 +726,6 @@ fn replier(
 }
 
 // checks if the given session_id has been initiated
-fn is_valid_session(id: String, current_archive_arc: &Arc<Mutex<Archive>>) -> bool {
-    current_archive_arc.lock().unwrap().get(&id).is_some()
+fn is_valid_session(id: String, archive: &Archive) -> bool {
+    archive.get(&id).is_some()
 }
