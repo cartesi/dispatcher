@@ -430,17 +430,16 @@ fn execute_reaction<T: DApp<()>>(
                         let current_archive_clone =
                             assets.current_archive.clone();
                         // check if the machine has been initiated yet
-                        trace!("[execute_reaction] Create new session");
-                        if !is_valid_session(new_session_request.session_id.clone(), &current_archive) {
-                            process_new_session_request(
-                                main_concern,
-                                index,
-                                new_session_request,
-                                &emulator,
-                                current_archive_clone,
-                            );
+                        if is_valid_session(new_session_request.session_id.clone(), &current_archive) {
+                            return Box::new(web3::futures::future::ok::<(), _>(()));
                         }
-                        Box::new(web3::futures::future::ok::<(), _>(()))
+                        process_new_session_request(
+                            main_concern,
+                            index,
+                            new_session_request,
+                            &emulator,
+                            current_archive_clone,
+                        )
                     }
                     Reaction::Idle => {
                         Box::new(web3::futures::future::ok::<(), _>(()))
@@ -586,6 +585,8 @@ fn process_new_session_request(
     emulator: &EmulatorManager,
     current_archive_arc: Arc<Mutex<Archive>>,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
+    info!("New session request. Concern {:?}, index {}", main_concern, index);
+    
     return Box::new(emulator
         .new_session(NewSessionRequest {
             machine: new_session_request.machine.clone(),
@@ -599,10 +600,9 @@ fn process_new_session_request(
         })
         .then(move |grpc_result| {
             let mut current_archive = current_archive_arc.lock().unwrap();
-            let resulting_hash = grpc_result.unwrap();
             info!(
                 "New Session. Concern {:?}, index {}, request {:?}, answer: {:?}",
-                main_concern, index, new_session_request, resulting_hash
+                main_concern, index, new_session_request, grpc_result
             );
             // add new session to archive
             add_new_session(

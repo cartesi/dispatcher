@@ -125,18 +125,36 @@ impl EmulatorManager {
         request: NewSessionRequest,
     ) -> Box<Future<Item = Hash, Error = Error> + Send> {
         let mut req = manager_high::NewSessionRequest::new();
+        let id = request.session_id.clone();
         req.set_session_id(request.session_id);
         req.set_machine(request.machine);
-        return Box::new(ok((&self)
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // Fix the mess below, but it is mainly a fault of rust's grpc
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        let grpc_request = (&self)
             .client
             .new_session(RequestOptions::new(), req)
-            .0
-            .wait()
-            .unwrap()
-            .1
-            .wait()
-            .unwrap()
-            .0
-            .into()));
+            .wait_drop_metadata();
+
+        match grpc_request {
+            Ok(response) => {
+                println!("Ok: {:?}", response);
+                return Box::new(ok(response));
+            }
+            Err(e) => {
+                println!("Err: {:?}", e);
+                match &e {
+                    grpc::Error::GrpcMessage(grpc_msg_error) => {
+                        if grpc_msg_error.grpc_status == 3
+                        && grpc_msg_error.grpc_message == ("Trying to register a session with a session_id that already exists: ".to_string() + &id) {
+                            println!("Warning: Trying to register a session with a session_id that already exists");
+                            return Box::new(ok(Hash::new()));
+                        }
+                    }
+                    _ => {}
+                }
+                return Box::new(err(e.into()));
+            }
+        }
     }
 }
