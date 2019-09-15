@@ -29,7 +29,7 @@ use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
-use std::collections::HashMap;
+use super::HashMap;
 
 /// Stores the hash of each time that has been calculated
 pub type SampleRun = HashMap<U256, H256>;
@@ -48,6 +48,30 @@ pub struct SamplePair {
 
 /// The total archive, for each machine session
 pub type Archive = HashMap<String, SamplePair>;
+
+pub struct NewArchive {
+    archive: HashMap<String, Vec<u8>>,
+}
+
+impl NewArchive {
+    /// Creates a NewArchive
+    pub fn new() -> Result<NewArchive> {
+        Ok(NewArchive {
+            archive: HashMap::new()
+        })
+    }
+
+    pub fn get_response(&self, service: String, key: String, method: String, request: Vec<u8>) -> Result<Vec<u8>> {
+        match self.archive.get(&key) {
+            Some(resp) => {Ok(resp.clone())},
+            None => {Err(Error::from(ErrorKind::ArchiveMissError(service, key, method, request)))}
+        }
+    }
+
+    pub fn insert(&mut self, key: String, response: Vec<u8>) -> Option<Vec<u8>> {
+        self.archive.insert(key, response)
+    }
+}
 
 use emulator::SessionRunRequest;
 use emulator::SessionStepRequest;

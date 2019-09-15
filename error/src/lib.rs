@@ -97,5 +97,9 @@ error_chain! {
             description("error received from grpc")
                 display("error received from grpc: {}", details)
         }
+        ArchiveMissError(service: String, key: String, method: String, request: Vec<u8>) {
+            description("request data doesn't exist in archive")
+                display("request data doesn't exist in archive, service: {}, key: {}, method: {}", service, key, method)
+        }
     }
 }

@@ -151,6 +151,13 @@ impl fmt::Display for TransPort {
     }
 }
 
+/// A service containing name and transport
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Service {
+    pub name: String,
+    pub transport: TransPort,
+}
+
 /// Structure for parsing configurations, both Environment and CLI arguments
 #[derive(StructOpt, Deserialize, Debug)]
 #[structopt(name = "basic")]
@@ -207,6 +214,7 @@ struct FileConfiguration {
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
     emulator_transport: Option<TransPort>,
+    services: Vec<Service>,
     confirmations: Option<usize>,
     query_port: Option<u16>,
 }
@@ -223,6 +231,7 @@ pub struct Configuration {
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
     pub emulator_transport: TransPort,
+    pub services: Vec<Service>,
     pub confirmations: usize,
     pub query_port: u16,
 }
@@ -270,7 +279,8 @@ impl fmt::Display for Configuration {
              Number of concerns: {}\
              Working path: {:?}\
              Emulator transport: {}\
-             Number of onfirmations: {}\
+             Number of services: {}\
+             Number of confirmations: {}\
              Query port: {}",
             self.url,
             self.testing,
@@ -280,6 +290,7 @@ impl fmt::Display for Configuration {
             self.concerns.len(),
             self.working_path,
             self.emulator_transport,
+            self.services.len(),
             self.confirmations,
             self.query_port,
         )
@@ -516,6 +527,7 @@ fn combine_config(
         working_path: working_path,
         abis: abis,
         emulator_transport: emulator_transport,
+        services: file_config.services,
         confirmations: confirmations,
         query_port: query_port,
     })

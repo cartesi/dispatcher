@@ -33,6 +33,7 @@ extern crate ethereum_types;
 extern crate tokio;
 extern crate utils;
 extern crate web3;
+extern crate grpc;
 
 #[macro_use]
 extern crate serde_derive;
@@ -51,7 +52,7 @@ use std::str;
 
 use configuration::{Concern, Configuration};
 use emulator::EmulatorManager;
-pub use emulator::{SessionRunRequest, SessionStepRequest, NewSessionRequest,};
+pub use emulator::{SessionRunRequest, SessionStepRequest, NewSessionRequest};
 pub use error::*;
 use ethereum_types::{H256, U256};
 use hyper::service::service_fn;
@@ -67,11 +68,13 @@ use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
 use web3::futures::sync::{mpsc, oneshot};
 use web3::futures::{stream, Future, Stream};
+use grpc::{Client, RequestOptions};
+use std::collections::HashMap;
 
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
     FieldType, Reaction, SamplePair, SampleRun, SampleStep, String32Field,
-    U256Array, U256Array5, U256Array6, U256Field,
+    U256Array, U256Array5, U256Array6, U256Field, NewArchive
 };
 
 /// Responsible for querying the state of each concern, get a reaction
@@ -94,6 +97,8 @@ struct Assets {
     state_manager: Arc<Mutex<StateManager>>,
     emulator: Arc<Mutex<EmulatorManager>>,
     current_archive: Arc<Mutex<Archive>>,
+    new_archive: Arc<Mutex<NewArchive>>,
+    clients: Arc<Mutex<HashMap<String, Arc<Mutex<Client>>>>>
 }
 
 impl Assets {
@@ -103,6 +108,8 @@ impl Assets {
             state_manager: self.state_manager.clone(),
             emulator: self.emulator.clone(),
             current_archive: self.current_archive.clone(),
+            new_archive: self.new_archive.clone(),
+            clients: self.clients.clone()
         }
     }
 }
@@ -140,6 +147,16 @@ impl Dispatcher {
         info!("Creating archive");
         let current_archive = Archive::new();
 
+        info!("Creating new archive");
+        let new_archive = NewArchive::new()?;
+
+        info!("Creating grpc client");
+        let mut clients = HashMap::new();
+        for service in config.services.iter() {
+            let client = Client::new_plain(&service.transport.address.clone(), service.transport.port.clone(), Default::default())?;
+            clients.insert(service.name.clone(), Arc::new(Mutex::new(client)));
+        }
+
         let dispatcher = Dispatcher {
             config: config,
             _web3: web3,
@@ -149,6 +166,8 @@ impl Dispatcher {
                 state_manager: Arc::new(Mutex::new(state_manager)),
                 emulator: Arc::new(Mutex::new(emulator)),
                 current_archive: Arc::new(Mutex::new(current_archive)),
+                new_archive: Arc::new(Mutex::new(new_archive)),
+                clients: Arc::new(Mutex::new(clients))
             },
         };
 
@@ -369,6 +388,8 @@ fn execute_reaction<T: DApp<()>>(
                     assets.transaction_manager.lock().unwrap();
                 let emulator = assets.emulator.lock().unwrap();
                 let current_archive = assets.current_archive.lock().unwrap();
+                let mut new_archive = assets.new_archive.lock().unwrap();
+                let clients = assets.clients.lock().unwrap();
 
                 // get reaction from dapp to this instance
                 let reaction = match T::react(&instance, &current_archive, &())
@@ -376,7 +397,26 @@ fn execute_reaction<T: DApp<()>>(
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        return Box::new(web3::futures::future::err(e));
+                        match e.kind() {
+                            ErrorKind::ArchiveMissError(service, key, method, request) => {
+                                if let Some(client) = clients.get(&service.clone()) {
+                                    let response = grpc_call_unary(client.clone(), request.clone(), method.clone()).wait_drop_metadata();
+                                    match response {
+                                        Ok(resp) => {
+                                            new_archive.insert(key.clone(), resp);
+                                            return Box::new(web3::futures::future::err(Error::from(format!("Filled missing archive data of key: {}", key))));
+                                        }
+                                        Err(e) => {
+                                            return Box::new(web3::futures::future::err(e.into()));
+                                        }
+                                    }
+                                }
+                                return Box::new(web3::futures::future::err(Error::from(format!("Fail to get grpc client of {} service", service))));
+                            },
+                            _ => {
+                                return Box::new(web3::futures::future::err(e));
+                            }
+                        }
                     }
                 };
                 trace!(
@@ -728,4 +768,18 @@ fn replier(
 // checks if the given session_id has been initiated
 fn is_valid_session(id: String, archive: &Archive) -> bool {
     archive.get(&id).is_some()
+}
+
+// send grpc request with binary data
+pub fn grpc_call_unary(client_arc: Arc<Mutex<Client>>, req: Vec<u8>, method_name: String)
+                                -> grpc::SingleResponse<Vec<u8>>
+{
+    let client = client_arc.lock().unwrap();
+    let method = Arc::new(grpc::rt::MethodDescriptor {
+            name: method_name,
+            streaming: grpc::rt::GrpcStreaming::Unary,
+            req_marshaller: Box::new(grpc::for_test::MarshallerBytes),
+            resp_marshaller: Box::new(grpc::for_test::MarshallerBytes),
+        });
+    client.call_unary(RequestOptions::new(), req, method)
 }
