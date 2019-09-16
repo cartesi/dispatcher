@@ -27,7 +27,6 @@
 pub mod dapp;
 
 extern crate configuration;
-extern crate emulator;
 extern crate error;
 extern crate ethereum_types;
 extern crate tokio;
@@ -51,10 +50,7 @@ extern crate transaction;
 use std::str;
 
 use configuration::{Concern, Configuration};
-use emulator::EmulatorManager;
-pub use emulator::{SessionRunRequest, SessionStepRequest, NewSessionRequest};
 pub use error::*;
-use ethereum_types::{H256, U256};
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use state::StateManager;
@@ -73,13 +69,13 @@ use std::collections::HashMap;
 
 pub use dapp::{
     AddressField, Archive, BoolArray, Bytes32Array, Bytes32Field, DApp,
-    FieldType, Reaction, SamplePair, SampleRun, SampleStep, String32Field,
-    U256Array, U256Array5, U256Array6, U256Field, NewArchive
+    FieldType, Reaction, String32Field, U256Array, U256Array5, U256Array6,
+    U256Field
 };
 
 /// Responsible for querying the state of each concern, get a reaction
 /// from the dapp and submit reactions for either the Transaction Manager or
-/// the Emulator
+/// the other services (Emulator, Logger, etc)
 pub struct Dispatcher {
     config: Configuration,
     _web3: web3::api::Web3<web3::transports::http::Http>, // to stay in scope
@@ -95,9 +91,7 @@ pub struct Dispatcher {
 struct Assets {
     transaction_manager: Arc<Mutex<TransactionManager>>,
     state_manager: Arc<Mutex<StateManager>>,
-    emulator: Arc<Mutex<EmulatorManager>>,
-    current_archive: Arc<Mutex<Archive>>,
-    new_archive: Arc<Mutex<NewArchive>>,
+    archive: Arc<Mutex<Archive>>,
     clients: Arc<Mutex<HashMap<String, Arc<Mutex<Client>>>>>
 }
 
@@ -106,9 +100,7 @@ impl Assets {
         Assets {
             transaction_manager: self.transaction_manager.clone(),
             state_manager: self.state_manager.clone(),
-            emulator: self.emulator.clone(),
-            current_archive: self.current_archive.clone(),
-            new_archive: self.new_archive.clone(),
+            archive: self.archive.clone(),
             clients: self.clients.clone()
         }
     }
@@ -141,14 +133,8 @@ impl Dispatcher {
         info!("Creating state manager");
         let state_manager = StateManager::new(config.clone())?;
 
-        info!("Creating emulator client");
-        let emulator = EmulatorManager::new(config.emulator_transport.clone())?;
-
         info!("Creating archive");
-        let current_archive = Archive::new();
-
-        info!("Creating new archive");
-        let new_archive = NewArchive::new()?;
+        let archive = Archive::new()?;
 
         info!("Creating grpc client");
         let mut clients = HashMap::new();
@@ -164,9 +150,7 @@ impl Dispatcher {
             assets: Assets {
                 transaction_manager: Arc::new(Mutex::new(transaction_manager)),
                 state_manager: Arc::new(Mutex::new(state_manager)),
-                emulator: Arc::new(Mutex::new(emulator)),
-                current_archive: Arc::new(Mutex::new(current_archive)),
-                new_archive: Arc::new(Mutex::new(new_archive)),
+                archive: Arc::new(Mutex::new(archive)),
                 clients: Arc::new(Mutex::new(clients))
             },
         };
@@ -386,13 +370,11 @@ fn execute_reaction<T: DApp<()>>(
             move |instance| -> Box<Future<Item = (), Error = Error> + Send> {
                 let transaction_manager =
                     assets.transaction_manager.lock().unwrap();
-                let emulator = assets.emulator.lock().unwrap();
-                let current_archive = assets.current_archive.lock().unwrap();
-                let mut new_archive = assets.new_archive.lock().unwrap();
+                let mut archive = assets.archive.lock().unwrap();
                 let clients = assets.clients.lock().unwrap();
 
                 // get reaction from dapp to this instance
-                let reaction = match T::react(&instance, &current_archive, &())
+                let reaction = match T::react(&instance, &archive, &())
                     .chain_err(|| format!("could not get dapp reaction"))
                 {
                     Ok(r) => r,
@@ -403,7 +385,7 @@ fn execute_reaction<T: DApp<()>>(
                                     let response = grpc_call_unary(client.clone(), request.clone(), method.clone()).wait_drop_metadata();
                                     match response {
                                         Ok(resp) => {
-                                            new_archive.insert(key.clone(), resp);
+                                            archive.insert(key.clone(), resp);
                                             return Box::new(web3::futures::future::ok::<(), _>(()));
                                         }
                                         Err(e) => {
@@ -428,36 +410,6 @@ fn execute_reaction<T: DApp<()>>(
 
                 // act according to dapp reaction
                 match reaction {
-                    Reaction::Request(run_request) => {
-                        let current_archive_clone =
-                            assets.current_archive.clone();
-                        // check if the machine has been initiated yet
-                        if !is_valid_session(run_request.session_id.clone(), &current_archive) {
-                            return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
-                        }
-                        process_run_request(
-                            main_concern,
-                            index,
-                            run_request,
-                            &emulator,
-                            current_archive_clone,
-                        )
-                    }
-                    Reaction::Step(step_request) => {
-                        let current_archive_clone =
-                            assets.current_archive.clone();
-                        // check if the machine has been initiated yet
-                        if !is_valid_session(step_request.session_id.clone(), &current_archive) {
-                            return Box::new(web3::futures::future::err(Error::from(format!("Invalid session id"))));
-                        }
-                        process_step_request(
-                            main_concern,
-                            index,
-                            step_request,
-                            &emulator,
-                            current_archive_clone,
-                        )
-                    }
                     Reaction::Transaction(transaction_request) => {
                         process_transaction_request(
                             main_concern,
@@ -466,126 +418,12 @@ fn execute_reaction<T: DApp<()>>(
                             &transaction_manager,
                         )
                     }
-                    Reaction::NewSession(new_session_request) => {
-                        let current_archive_clone =
-                            assets.current_archive.clone();
-                        // check if the machine has been initiated yet
-                        if is_valid_session(new_session_request.session_id.clone(), &current_archive) {
-                            return Box::new(web3::futures::future::ok::<(), _>(()));
-                        }
-                        process_new_session_request(
-                            main_concern,
-                            index,
-                            new_session_request,
-                            &emulator,
-                            current_archive_clone,
-                        )
-                    }
                     Reaction::Idle => {
                         Box::new(web3::futures::future::ok::<(), _>(()))
                     }
                 }
             },
         ),
-    );
-}
-
-fn process_run_request(
-    main_concern: Concern,
-    index: usize,
-    run_request: SessionRunRequest,
-    emulator: &EmulatorManager,
-    current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = Error> + Send> {
-    return Box::new(emulator
-        .run(SessionRunRequest {
-            session_id: run_request.session_id.clone(),
-            times: run_request.times.clone(),
-        })
-        .map_err(|e| {
-            Error::from(ErrorKind::GrpcError(format!(
-                "could not run emulator: {}",
-                e
-            )))
-        })
-        .then(move |grpc_result| {
-            let resulting_hash = grpc_result.unwrap();
-            info!(
-                "Run machine. Concern {:?}, index {}, request {:?}, answer: {:?}",
-                main_concern, index, run_request, resulting_hash
-            );
-            let store_result_in_archive: Result<Vec<()>> = run_request
-                .times
-                .clone()
-                .into_iter()
-                .zip(resulting_hash.hashes.clone().iter())
-                .map(|(time, hash)| -> Result<()> {
-                    let mut current_archive =
-                        current_archive_arc.lock().unwrap();
-                    // add results of run to archive
-                    add_run(
-                        &mut current_archive,
-                        run_request.session_id.clone(),
-                        U256::from(time),
-                        hash.clone(),
-                    )
-                })
-                .collect();
-            match store_result_in_archive.chain_err(|| {
-                format!(
-                    "could not convert to hash one of these strings: {:?}",
-                    resulting_hash.hashes
-                )
-            }) {
-                Ok(_) => return web3::futures::future::ok::<(), _>(()),
-                Err(e) => {
-                    return web3::futures::future::err(e);
-                }
-            };
-        }));
-}
-
-fn process_step_request(
-    main_concern: Concern,
-    index: usize,
-    step_request: SessionStepRequest,
-    emulator: &EmulatorManager,
-    current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = Error> + Send> {
-    info!("Step request. Concern {:?}, index {}", main_concern, index);
-
-    return Box::new(
-        emulator
-            .step(SessionStepRequest {
-                session_id: step_request.session_id.clone(),
-                time: step_request.time,
-            })
-            .map_err(|e| {
-                Error::from(ErrorKind::GrpcError(format!(
-                    "could not run emulator: {}",
-                    e
-                )))
-            })
-            .then(move |grpc_result| {
-                let mut current_archive = current_archive_arc.lock().unwrap();
-                let resulting_step = grpc_result.unwrap();
-                info!(
-                    "Step. Concern {:?}, index {}, request {:?}, answer: {:?}",
-                    main_concern, index, step_request, resulting_step
-                );
-                // add results of step to archive
-                match add_step(
-                    &mut current_archive,
-                    step_request.session_id.clone(),
-                    U256::from(step_request.time),
-                    resulting_step.log.to_vec(),
-                ) {
-                    Ok(_) => return web3::futures::future::ok::<(), _>(()),
-                    Err(e) => {
-                        return web3::futures::future::err(e);
-                    }
-                }
-            }),
     );
 }
 
@@ -616,88 +454,6 @@ fn process_transaction_request(
                 })
             }),
     )
-}
-
-fn process_new_session_request(
-    main_concern: Concern,
-    index: usize,
-    new_session_request: NewSessionRequest,
-    emulator: &EmulatorManager,
-    current_archive_arc: Arc<Mutex<Archive>>,
-) -> Box<Future<Item = (), Error = Error> + Send> {
-    info!("New session request. Concern {:?}, index {}", main_concern, index);
-    
-    return Box::new(emulator
-        .new_session(NewSessionRequest {
-            machine: new_session_request.machine.clone(),
-            session_id: new_session_request.session_id.clone(),
-        })
-        .map_err(|e| {
-            Error::from(ErrorKind::GrpcError(format!(
-                "could not run emulator: {}",
-                e
-            )))
-        })
-        .then(move |grpc_result| {
-            let mut current_archive = current_archive_arc.lock().unwrap();
-            info!(
-                "New Session. Concern {:?}, index {}, request {:?}, answer: {:?}",
-                main_concern, index, new_session_request, grpc_result
-            );
-            // add new session to archive
-            add_new_session(
-                &mut current_archive,
-                new_session_request.session_id.clone(),
-            );
-            return web3::futures::future::ok::<(), _>(());
-        }),
-    );
-}
-
-pub fn add_run(
-    archive: &mut Archive,
-    id: String,
-    time: U256,
-    hash: H256
-    ) -> Result<()> {
-    return archive
-            .get_mut(&id)
-            .and_then(|entry| {
-                entry.run.insert(time, hash);
-                warn!(
-                    "Machine {} at time {} recomputed, run value {:?}",
-                    id, time, hash
-                );
-                Some(())
-            })
-            .ok_or(Error::from(format!("Fail to insert run to the Archive")))
-}
-
-pub fn add_step(
-    archive: &mut Archive,
-    id: String,
-    time: U256,
-    log: dapp::StepLog,
-) -> Result<()> {
-    return archive
-            .get_mut(&id)
-            .and_then(|entry| {
-                entry.step.insert(time, log.clone());
-                warn!("Machine {} at time {} recomputed, step {:?}", id, time, log);
-                Some(())
-            })
-            .ok_or(Error::from(format!("Fail to insert step to the Archive")))
-}
-
-pub fn add_new_session(
-    archive: &mut Archive,
-    id: String,
-) {
-    archive.entry(id.clone()).or_insert(SamplePair {
-        run: SampleRun::new(),
-        step: SampleStep::new(),
-    });
-    warn!("Machine {} initialized", id);
 }
 
 // a replier is a tokio task that passes queries about the state of the
@@ -763,11 +519,6 @@ fn replier(
             )
         });
     Box::new(query_future)
-}
-
-// checks if the given session_id has been initiated
-fn is_valid_session(id: String, archive: &Archive) -> bool {
-    archive.get(&id).is_some()
 }
 
 // send grpc request with binary data

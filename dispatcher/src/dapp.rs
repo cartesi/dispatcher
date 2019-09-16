@@ -31,51 +31,30 @@ use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
 use super::HashMap;
 
-/// Stores the hash of each time that has been calculated
-pub type SampleRun = HashMap<U256, H256>;
-
-/// The log of a given step, composed of various accesses (read/write)
-pub type StepLog = Vec<emulator::Access>;
-
-/// Stores step logs of each time for which it has been calculated
-pub type SampleStep = HashMap<U256, StepLog>;
-
-/// This is our collection of samples (both of running and step logs)
-pub struct SamplePair {
-    pub run: SampleRun,
-    pub step: SampleStep,
-}
-
 /// The total archive, for each machine session
-pub type Archive = HashMap<String, SamplePair>;
-
-pub struct NewArchive {
-    archive: HashMap<String, Vec<u8>>,
+pub struct Archive {
+    hash_map: HashMap<String, Vec<u8>>,
 }
 
-impl NewArchive {
+impl Archive {
     /// Creates a NewArchive
-    pub fn new() -> Result<NewArchive> {
-        Ok(NewArchive {
-            archive: HashMap::new()
+    pub fn new() -> Result<Archive> {
+        Ok(Archive {
+            hash_map: HashMap::new()
         })
     }
 
     pub fn get_response(&self, service: String, key: String, method: String, request: Vec<u8>) -> Result<Vec<u8>> {
-        match self.archive.get(&key) {
+        match self.hash_map.get(&key) {
             Some(resp) => {Ok(resp.clone())},
             None => {Err(Error::from(ErrorKind::ArchiveMissError(service, key, method, request)))}
         }
     }
 
     pub fn insert(&mut self, key: String, response: Vec<u8>) -> Option<Vec<u8>> {
-        self.archive.insert(key, response)
+        self.hash_map.insert(key, response)
     }
 }
-
-use emulator::SessionRunRequest;
-use emulator::SessionStepRequest;
-use emulator::NewSessionRequest;
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // In the future, there should be app emulator
@@ -90,10 +69,7 @@ use emulator::NewSessionRequest;
 /// . Idle and do nothing
 #[derive(Debug)]
 pub enum Reaction {
-    Request(SessionRunRequest),
-    Step(SessionStepRequest),
     Transaction(TransactionRequest),
-    NewSession(NewSessionRequest),
     Idle,
 }
 
