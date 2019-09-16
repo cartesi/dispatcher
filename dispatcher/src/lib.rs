@@ -404,7 +404,7 @@ fn execute_reaction<T: DApp<()>>(
                                     match response {
                                         Ok(resp) => {
                                             new_archive.insert(key.clone(), resp);
-                                            return Box::new(web3::futures::future::err(Error::from(format!("Filled missing archive data of key: {}", key))));
+                                            return Box::new(web3::futures::future::ok::<(), _>(()));
                                         }
                                         Err(e) => {
                                             return Box::new(web3::futures::future::err(e.into()));
