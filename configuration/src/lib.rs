@@ -262,15 +262,15 @@ impl fmt::Display for Configuration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{{ Url: {}\
-             Testing: {}\
-             Max delay: {}\
-             Warning delay: {}\
-             Main concern: {}\
-             Number of concerns: {}\
-             Working path: {:?}\
-             Number of services: {}\
-             Number of confirmations: {}\
+            "{{ Url: {}, \
+             Testing: {}, \
+             Max delay: {}, \
+             Warning delay: {}, \
+             Main concern: {}, \
+             Number of concerns: {}, \
+             Working path: {:?}, \
+             Number of services: {}, \
+             Number of confirmations: {}, \
              Query port: {}",
             self.url,
             self.testing,

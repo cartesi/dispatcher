@@ -375,7 +375,8 @@ fn execute_reaction<T: DApp<()>>(
 
                 // get reaction from dapp to this instance
                 let reaction = match T::react(&instance, &archive, &())
-                    .chain_err(|| format!("could not get dapp reaction"))
+                // TODO: may need to uncomment below line
+                //    .chain_err(|| format!("could not get dapp reaction"))
                 {
                     Ok(r) => r,
                     Err(e) => {
@@ -383,6 +384,7 @@ fn execute_reaction<T: DApp<()>>(
                             // can't find specific data with `key` in the archive,
                             // try to get it from the service through grpc request
                             ErrorKind::ArchiveMissError(service, key, method, request) => {
+                                trace!("handling ArchiveMissError for service: {}, and key: {}", service, key);
                                 if let Some(client) = clients.get(&service.clone()) {
                                     let response = grpc_call_unary(client.clone(), request.clone(), method.clone()).wait_drop_metadata();
                                     match response {
@@ -401,7 +403,8 @@ fn execute_reaction<T: DApp<()>>(
                             },
                             // the archive consists invalid data for `key`,
                             // remove the entry and let `ArchiveMissError` handle the rest
-                            ErrorKind::ArchiveInvalidError(_s, key, _m) => {
+                            ErrorKind::ArchiveInvalidError(service, key, _m) => {
+                                trace!("handling ArchiveInvalidError for service: {}, and key: {}", service, key);
                                 archive.remove(key.clone());
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
                             }
