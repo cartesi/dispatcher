@@ -49,7 +49,7 @@ const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
 use ethereum_types::Address;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
@@ -213,7 +213,6 @@ struct FileConfiguration {
     main_concern: Option<FullConcern>,
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
-    emulator_transport: Option<TransPort>,
     services: Vec<Service>,
     confirmations: Option<usize>,
     query_port: Option<u16>,
@@ -230,7 +229,6 @@ pub struct Configuration {
     pub concerns: Vec<Concern>,
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
-    pub emulator_transport: TransPort,
     pub services: Vec<Service>,
     pub confirmations: usize,
     pub query_port: u16,
@@ -243,25 +241,18 @@ fn validate_ip_address(ip: &String) -> bool {
 
 /// check if a given transport is well formed (having all valid arguments).
 fn validate_transport(
-    validate_address: Option<String>,
-    validate_port: Option<u16>,
-) -> Result<Option<TransPort>> {
-    // if some option is Some, both should be
-    if validate_address.is_some() || validate_port.is_some() {
-        Ok(Some(TransPort {
-            address: validate_address
-                .filter(validate_ip_address)
-                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-                    "Transport's address should be specified",
-                ))))?,
-            port: validate_port
-                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-                    "Transport's port should be specified",
-                ))))?,
-        }))
-    } else {
-        Ok(None)
+    validate_address: String,
+    validate_port: u16,
+) -> Result<TransPort> {
+    if !validate_ip_address(&validate_address.clone()) {
+        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
+                "Transport's address should be specified",
+            ))));
     }
+    Ok(TransPort {
+        address: validate_address,
+        port: validate_port
+    })
 }
 
 // !!!!!!!!!!!
@@ -278,7 +269,6 @@ impl fmt::Display for Configuration {
              Main concern: {}\
              Number of concerns: {}\
              Working path: {:?}\
-             Emulator transport: {}\
              Number of services: {}\
              Number of confirmations: {}\
              Query port: {}",
@@ -289,7 +279,6 @@ impl fmt::Display for Configuration {
             self.main_concern,
             self.concerns.len(),
             self.working_path,
-            self.emulator_transport,
             self.services.len(),
             self.confirmations,
             self.query_port,
@@ -432,25 +421,18 @@ fn combine_config(
             "Need to provide working path (config file, command line or env)",
         ))))?);
 
-    info!("determine cli emulator transport");
-    let cli_emulator_transport = validate_transport(
-        cli_config.emulator_address,
-        cli_config.emulator_port,
-    )?;
-
-    info!("determine env emulator transport");
-    let env_emulator_transport = validate_transport(
-        env_config.emulator_address,
-        env_config.emulator_port,
-    )?;
-
-    // determine emulator transport (cli -> env -> config)
-    let emulator_transport = cli_emulator_transport
-        .or(env_emulator_transport)
-        .or(file_config.emulator_transport)
-        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Need to provide emulator transport (config file, command line or env)",
-        ))))?;
+    // determine no two services has the same name,
+    // and the transports are valid
+    info!("validate services transport and names");
+    let mut name_set = HashSet::new();
+    for service in &file_config.services {
+        if !name_set.insert(service.name.clone()) {
+            return Err(Error::from(ErrorKind::InvalidConfig(format!(
+                "Duplicate service names found: {}", service.name
+            ))));
+        }
+        let _transport = validate_transport(service.transport.address.clone(), service.transport.port)?;
+    }
 
     let query_port: u16 = cli_config
         .query_port
@@ -526,7 +508,6 @@ fn combine_config(
         concerns: concerns,
         working_path: working_path,
         abis: abis,
-        emulator_transport: emulator_transport,
         services: file_config.services,
         confirmations: confirmations,
         query_port: query_port,
