@@ -54,6 +54,10 @@ impl Archive {
     pub fn insert(&mut self, key: String, response: Vec<u8>) -> Option<Vec<u8>> {
         self.hash_map.insert(key, response)
     }
+
+    pub fn remove(&mut self, key: String) {
+        self.hash_map.remove(&key);
+    }
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

@@ -380,6 +380,8 @@ fn execute_reaction<T: DApp<()>>(
                     Ok(r) => r,
                     Err(e) => {
                         match e.kind() {
+                            // can't find specific data with `key` in the archive,
+                            // try to get it from the service through grpc request
                             ErrorKind::ArchiveMissError(service, key, method, request) => {
                                 if let Some(client) = clients.get(&service.clone()) {
                                     let response = grpc_call_unary(client.clone(), request.clone(), method.clone()).wait_drop_metadata();
@@ -389,12 +391,20 @@ fn execute_reaction<T: DApp<()>>(
                                             return Box::new(web3::futures::future::ok::<(), _>(()));
                                         }
                                         Err(e) => {
+                                            // TODO: handle grpc errors here
+                                            // use error_archive to determin the reaction
                                             return Box::new(web3::futures::future::err(e.into()));
                                         }
                                     }
                                 }
                                 return Box::new(web3::futures::future::err(Error::from(format!("Fail to get grpc client of {} service", service))));
                             },
+                            // the archive consists invalid data for `key`,
+                            // remove the entry and let `ArchiveMissError` handle the rest
+                            ErrorKind::ArchiveInvalidError(_s, key, _m) => {
+                                archive.remove(key.clone());
+                                return Box::new(web3::futures::future::ok::<(), _>(()));
+                            }
                             _ => {
                                 return Box::new(web3::futures::future::err(e));
                             }
