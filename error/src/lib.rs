@@ -101,5 +101,9 @@ error_chain! {
             description("request data doesn't exist in archive")
                 display("request data doesn't exist in archive, service: {}, key: {}, method: {}", service, key, method)
         }
+        ArchiveInvalidError(service: String, key: String, method: String) {
+            description("request data in archive is invalid")
+                display("request data in archive is invalid, service: {}, key: {}, method: {}", service, key, method)
+        }
     }
 }
