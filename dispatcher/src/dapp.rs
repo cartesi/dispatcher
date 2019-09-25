@@ -33,7 +33,7 @@ use super::HashMap;
 
 /// The total archive, for each machine session
 pub struct Archive {
-    hash_map: HashMap<String, Vec<u8>>,
+    hash_map: HashMap<String, std::result::Result<Vec<u8>, String>>,
 }
 
 impl Archive {
@@ -44,14 +44,18 @@ impl Archive {
         })
     }
 
-    pub fn get_response(&self, service: String, key: String, method: String, request: Vec<u8>) -> Result<Vec<u8>> {
+    pub fn get_response(&self, service: String, key: String, method: String, request: Vec<u8>)
+     -> Result<std::result::Result<Vec<u8>, String>> {
         match self.hash_map.get(&key) {
-            Some(resp) => {Ok(resp.clone())},
+            Some(response) => {
+                Ok(response.clone())
+            }
             None => {Err(Error::from(ErrorKind::ArchiveMissError(service, key, method, request)))}
         }
     }
 
-    pub fn insert(&mut self, key: String, response: Vec<u8>) -> Option<Vec<u8>> {
+    pub fn insert(&mut self, key: String, response: std::result::Result<Vec<u8>, String>)
+     -> Option<std::result::Result<Vec<u8>, String>> {
         self.hash_map.insert(key, response)
     }
 

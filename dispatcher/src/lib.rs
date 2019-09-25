@@ -386,20 +386,36 @@ fn execute_reaction<T: DApp<()>>(
                             ErrorKind::ArchiveMissError(service, key, method, request) => {
                                 trace!("handling ArchiveMissError for service: {}, and key: {}", service, key);
                                 if let Some(client) = clients.get(&service.clone()) {
-                                    let response = grpc_call_unary(client.clone(), request.clone(), method.clone()).wait_drop_metadata();
+
+                                    let response = grpc_call_unary(
+                                        client.clone(),
+                                        request.clone(),
+                                        method.clone())
+                                    .wait_drop_metadata();
+
                                     match response {
                                         Ok(resp) => {
-                                            archive.insert(key.clone(), resp);
+                                            archive.insert(key.clone(), Ok(resp));
                                             return Box::new(web3::futures::future::ok::<(), _>(()));
                                         }
                                         Err(e) => {
-                                            // TODO: handle grpc errors here
-                                            // use error_archive to determin the reaction
-                                            return Box::new(web3::futures::future::err(e.into()));
+                                            match e {
+                                                grpc::Error::GrpcMessage(msg) => {
+                                                    archive.insert(key.clone(), Err(msg.grpc_message.clone()));
+                                                    return Box::new(web3::futures::future::ok::<(), _>(()));
+                                                }
+                                                _ => {
+                                                    return Box::new(web3::futures::future::err(e.into()));
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                                return Box::new(web3::futures::future::err(Error::from(format!("Fail to get grpc client of {} service", service))));
+                                return Box::new(
+                                    web3::futures::future::err(
+                                        Error::from(format!("Fail to get grpc client of {} service", service))
+                                    )
+                                );
                             },
                             // the archive consists invalid data for `key`,
                             // remove the entry and let `ArchiveMissError` handle the rest
@@ -536,14 +552,16 @@ fn replier(
 
 // send grpc request with binary data
 pub fn grpc_call_unary(client_arc: Arc<Mutex<Client>>, req: Vec<u8>, method_name: String)
-                                -> grpc::SingleResponse<Vec<u8>>
+ -> grpc::SingleResponse<Vec<u8>>
 {
     let client = client_arc.lock().unwrap();
+
     let method = Arc::new(grpc::rt::MethodDescriptor {
-            name: method_name,
-            streaming: grpc::rt::GrpcStreaming::Unary,
-            req_marshaller: Box::new(grpc::for_test::MarshallerBytes),
-            resp_marshaller: Box::new(grpc::for_test::MarshallerBytes),
-        });
+        name: method_name,
+        streaming: grpc::rt::GrpcStreaming::Unary,
+        req_marshaller: Box::new(grpc::for_test::MarshallerBytes),
+        resp_marshaller: Box::new(grpc::for_test::MarshallerBytes),
+    });
+
     client.call_unary(RequestOptions::new(), req, method)
 }
