@@ -105,5 +105,9 @@ error_chain! {
             description("request data in archive is invalid")
                 display("request data in archive is invalid, service: {}, key: {}, method: {}", service, key, method)
         }
+        ArchiveNeedsDummy(service: String, key: String, method: String) {
+            description("archive needs a dummy entry for the key")
+                display("archive needs a dummy entry for the key, service: {}, key: {}, method: {}", service, key, method)
+        }
     }
 }
