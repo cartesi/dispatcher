@@ -423,6 +423,11 @@ fn execute_reaction<T: DApp<()>>(
                                 trace!("handling ArchiveInvalidError for service: {}, and key: {}", service, key);
                                 archive.remove(key.clone());
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
+                            },
+                            ErrorKind::ArchiveNeedsDummy(service, key, _m) => {
+                                trace!("handling ArchiveNeedsDummy for service: {}, and key: {}", service, key);
+                                archive.insert(key.clone(), Ok(Vec::new()));
+                                return Box::new(web3::futures::future::ok::<(), _>(()));
                             }
                             _ => {
                                 return Box::new(web3::futures::future::err(e));
