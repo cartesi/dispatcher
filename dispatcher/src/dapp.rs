@@ -101,6 +101,8 @@ pub trait DApp<T> {
 pub enum FieldType {
     #[serde(rename = "address")]
     AddressType,
+    #[serde(rename = "address[3]")]
+    AddressArray3Type,
     #[serde(rename = "uint256")]
     U256Type,
     #[serde(rename = "uint8")]
@@ -111,6 +113,8 @@ pub enum FieldType {
     U256Array5Type,
     #[serde(rename = "uint256[6]")]
     U256Array6Type,
+    #[serde(rename = "uint256[9]")]
+    U256Array9Type,
     #[serde(rename = "uint256[]")]
     U256ArrayType,
     #[serde(rename = "bool[]")]
@@ -125,6 +129,22 @@ pub struct AddressField {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: Address,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AddressArray {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: AddressField,
+    pub value: Vec<Address>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AddressArray3 {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: [Address; 3],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -157,6 +177,14 @@ pub struct U256Array6 {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: [U256; 6],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct U256Array9 {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: [U256; 9],
 }
 
 #[derive(Serialize, Deserialize)]
