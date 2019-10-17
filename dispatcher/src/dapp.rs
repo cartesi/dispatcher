@@ -117,6 +117,8 @@ pub enum FieldType {
     U256Array9Type,
     #[serde(rename = "uint256[]")]
     U256ArrayType,
+    #[serde(rename = "bool")]
+    BoolType,
     #[serde(rename = "bool[]")]
     BoolArrayType,
     #[serde(rename = "bytes32[]")]
@@ -201,6 +203,14 @@ pub struct Bytes32Array {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: Vec<H256>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BoolField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: bool,
 }
 
 #[derive(Serialize, Deserialize)]

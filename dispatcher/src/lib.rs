@@ -68,9 +68,9 @@ use grpc::{Client, RequestOptions};
 use std::collections::HashMap;
 
 pub use dapp::{
-    AddressField, AddressArray, AddressArray3, Archive, BoolArray, Bytes32Array,
-    Bytes32Field, DApp, FieldType, Reaction, String32Field, U256Array,
-    U256Array5, U256Array6, U256Array9, U256Field
+    AddressField, AddressArray, AddressArray3, Archive, BoolField, BoolArray,
+    Bytes32Array, Bytes32Field, DApp, FieldType, Reaction, String32Field,
+    U256Array, U256Array5, U256Array6, U256Array9, U256Field
 };
 
 /// Responsible for querying the state of each concern, get a reaction
