@@ -175,7 +175,17 @@ impl Dispatcher {
             ));
 
             // start listening to port for state queries
-            let addr = ([127, 0, 0, 1], port).into();
+            let addr = match std::env::var_os("DOCKER") {
+                Some(val) => {
+                    if val == "TRUE" {
+                        trace!("Binding to 0.0.0.0 as dispatcher running inside a docker");
+                        ([0, 0, 0, 0], port).into()
+                    } else {
+                        ([127, 0, 0, 1], port).into()
+                    }
+                },
+                None => ([127, 0, 0, 1], port).into()
+            };
             let listener = tokio::net::TcpListener::bind(&addr)
                 .expect("could not bind to port");
 
