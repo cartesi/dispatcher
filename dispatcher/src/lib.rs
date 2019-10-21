@@ -286,7 +286,8 @@ fn background_process<T: DApp<()>>(
                                         )
                                         .wait()
                                         .unwrap();
-                                    let pretty_instance = T::get_pretty_instance(&instance, &()).unwrap();
+                                    let archive = assets_fold.archive.lock().unwrap();
+                                    let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
                                     // send result back from oneshot channel
                                     q.oneshot.send(
                                         serde_json::to_string(&pretty_instance).unwrap()
