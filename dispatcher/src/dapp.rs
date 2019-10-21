@@ -85,6 +85,7 @@ pub trait DApp<T> {
     /// The function that makes a certain dapp react to the state of the
     /// instance
     fn react(&state::Instance, &Archive, &T) -> Result<Reaction>;
+    fn get_pretty_instance(&state::Instance, &T) -> Result<state::Instance>;
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
