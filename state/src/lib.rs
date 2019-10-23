@@ -70,6 +70,7 @@ use web3::contract::tokens::Tokenize;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Instance {
+    pub name: String,
     pub concern: Concern,
     pub index: U256,
     pub json_data: String,
@@ -491,6 +492,7 @@ impl StateManager {
 
         // join the subinstances together to return the current instance
         let starting_instance = Instance {
+            name: "".to_string(),
             concern: concern,
             index: U256::from(index),
             json_data: json_data,
