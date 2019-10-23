@@ -30,7 +30,6 @@
 extern crate env_logger;
 extern crate envy;
 extern crate error;
-extern crate ipaddress;
 
 extern crate serde;
 #[macro_use]
@@ -234,21 +233,11 @@ pub struct Configuration {
     pub query_port: u16,
 }
 
-/// validate a ip address with IPAddress is_valid()
-fn validate_ip_address(ip: &String) -> bool {
-    return ipaddress::IPAddress::is_valid(ip);
-}
-
 /// check if a given transport is well formed (having all valid arguments).
 fn validate_transport(
     validate_address: String,
     validate_port: u16,
 ) -> Result<TransPort> {
-    if !validate_ip_address(&validate_address.clone()) {
-        return Err(Error::from(ErrorKind::InvalidConfig(String::from(
-                "Transport's address should be specified",
-            ))));
-    }
     Ok(TransPort {
         address: validate_address,
         port: validate_port
