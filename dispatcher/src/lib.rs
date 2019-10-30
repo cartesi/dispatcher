@@ -210,12 +210,19 @@ struct QueryHandle {
     oneshot: web3::futures::sync::oneshot::Sender<String>,
 }
 
+#[derive(Debug, PartialEq, Deserialize)]
+struct PostBody {
+    index: usize,
+    action: String
+}
+
 /// All possible queries that can be done to the server concerning the
 /// state of instances
 #[derive(Debug, PartialEq, Deserialize)]
 enum Query {
     Indices,
     Instance(usize),
+    Post(PostBody)
 }
 
 // creates a future representing the background process that organizes
@@ -285,7 +292,8 @@ fn background_process<T: DApp<()>>(
                                     // send result back from oneshot channel
                                     q.oneshot.send(
                                         serde_json::to_string(&indices).unwrap()
-                                    ).unwrap();},
+                                    ).unwrap();
+                                },
                                 Query::Instance(i) => {
                                     let instance = state_manager_query
                                         .lock()
@@ -301,8 +309,29 @@ fn background_process<T: DApp<()>>(
                                     // send result back from oneshot channel
                                     q.oneshot.send(
                                         serde_json::to_string(&pretty_instance).unwrap()
-                                    ).unwrap();},
-                                };
+                                    ).unwrap();
+                                },
+                                Query::Post(body) => {
+                                    // clone assets to move inside
+                                    let main_concern_index = main_concern_fold.clone();
+                                    let assets_index = assets_fold.clone();
+
+                                    tokio::spawn(
+                                        execute_reaction::<T>(
+                                            main_concern_index,
+                                            body.index,
+                                            Some(body.action),
+                                            assets_index.clone(),
+                                        )
+                                        .map_err(|e| print_error(&e)),
+                                    );
+                                    let mut ok_status = HashMap::new();
+                                    ok_status.insert("status".to_string(), "ok".to_string());
+                                    q.oneshot.send(
+                                        serde_json::to_string(&ok_status).unwrap()
+                                    ).unwrap();
+                                }
+                            };
 
                             // for now we don't keep track of the state
                             Box::new(web3::futures::future::ok::<State, ()>(
@@ -349,6 +378,7 @@ fn background_process<T: DApp<()>>(
                                         execute_reaction::<T>(
                                             main_concern_index,
                                             index,
+                                            None,
                                             assets_index.clone(),
                                         )
                                         .map_err(|e| print_error(&e)),
@@ -370,6 +400,7 @@ fn background_process<T: DApp<()>>(
 fn execute_reaction<T: DApp<()>>(
     main_concern: Concern,
     index: usize,
+    post_action: Option<String>,
     assets: Assets,
 ) -> Box<Future<Item = (), Error = Error> + Send> {
     let state_manager_clone = assets.state_manager.clone();
@@ -386,7 +417,7 @@ fn execute_reaction<T: DApp<()>>(
                 let clients = assets.clients.lock().unwrap();
 
                 // get reaction from dapp to this instance
-                let reaction = match T::react(&instance, &archive, &())
+                let reaction = match T::react(&instance, &archive, &post_action, &())
                 // TODO: may need to uncomment below line
                 //    .chain_err(|| format!("could not get dapp reaction"))
                 {
