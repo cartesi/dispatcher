@@ -213,7 +213,7 @@ struct QueryHandle {
 #[derive(Debug, PartialEq, Deserialize)]
 struct PostBody {
     index: usize,
-    action: String
+    payload: String
 }
 
 /// All possible queries that can be done to the server concerning the
@@ -320,7 +320,7 @@ fn background_process<T: DApp<()>>(
                                         execute_reaction::<T>(
                                             main_concern_index,
                                             body.index,
-                                            Some(body.action),
+                                            Some(body.payload),
                                             assets_index.clone(),
                                         )
                                         .map_err(|e| print_error(&e)),
