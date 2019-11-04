@@ -69,7 +69,7 @@ use std::collections::HashMap;
 
 pub use dapp::{
     AddressField, AddressArray, AddressArray3, Archive, BoolField, BoolArray,
-    Bytes32Array, Bytes32Field, DApp, FieldType, Reaction, String32Field,
+    Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction, String32Field,
     U256Array, U256Array4, U256Array5, U256Array6, U256Array9, U256Field
 };
 
