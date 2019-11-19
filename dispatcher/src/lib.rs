@@ -599,7 +599,7 @@ fn replier(
 }
 
 // send grpc request with binary data
-pub fn grpc_call_unary(client_arc: Arc<Mutex<Client>>, req: Vec<u8>, method_name: String)
+fn grpc_call_unary(client_arc: Arc<Mutex<Client>>, req: Vec<u8>, method_name: String)
  -> grpc::SingleResponse<Vec<u8>>
 {
     let client = client_arc.lock().unwrap();

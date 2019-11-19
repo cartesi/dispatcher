@@ -82,7 +82,7 @@ pub struct TransactionRequest {
     pub strategy: Strategy,
 }
 
-/// Every concert that the Transaction Manager acts uppon should be
+/// Every concern that the Transaction Manager acts uppon should be
 /// provided with a key pair to sign transactions.
 struct ConcernData {
     key_pair: KeyPair,

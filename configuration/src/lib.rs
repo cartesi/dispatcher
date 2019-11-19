@@ -41,6 +41,8 @@ extern crate db_key;
 extern crate ethereum_types;
 extern crate hex;
 extern crate time;
+extern crate web3;
+extern crate serde_json;
 
 const DEFAULT_CONFIG_PATH: &str = "config.yaml";
 const DEFAULT_MAX_DELAY: u64 = 500;
@@ -55,6 +57,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use time::Duration;
+use web3::futures::Future;
+use serde_json::Value;
 
 /// A concern is a pair (smart contract, user) that this node should
 /// take care of.
@@ -176,9 +180,6 @@ struct EnvCLIConfiguration {
     /// Level of delay for Ethereum node that should trigger warnings
     #[structopt(short = "w", long = "warn")]
     warn_delay: Option<u64>,
-    /// Main concern's contract's address
-    #[structopt(long = "concern_contract")]
-    main_concern_contract: Option<String>,
     /// Main concern's user address
     #[structopt(long = "concern_user")]
     main_concern_user: Option<String>,
@@ -332,20 +333,13 @@ impl Configuration {
 /// check if a given concern is well formed (either having all arguments
 /// or none).
 fn validate_concern(
-    contract: Option<String>,
     user: Option<String>,
     abi: Option<String>,
 ) -> Result<Option<FullConcern>> {
     // if some option is Some, both should be
-    if contract.is_some() || user.is_some() || abi.is_some() {
+    if user.is_some() || abi.is_some() {
         Ok(Some(FullConcern {
-            contract_address: contract
-                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-                    "Concern's contract should be specified",
-                ))))?
-                .trim_start_matches("0x")
-                .parse()
-                .chain_err(|| format!("failed to parse contract address"))?,
+            contract_address: std::default::Default::default(),
             user_address: user
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's user should be specified",
@@ -379,6 +373,26 @@ fn combine_config(
         .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
             "Need to provide url (config file, command line or env)",
         ))))?;
+
+    info!("Trying to connect to Eth node at {}", &url[..]);
+    let (_eloop, transport) = web3::transports::Http::new(&url[..])
+        .chain_err(|| {
+            format!("could not connect to Eth node at url: {}", &url)
+        })?;
+
+    info!("Testing Ethereum node's functionality");
+    let url_clone = url.clone();
+    let web3 = web3::Web3::new(transport);
+    let network_id: String = web3
+        .net()
+        .version()
+        .map_err(move |_e| {
+            Error::from(ErrorKind::ChainError(format!(
+                "no Ethereum node responding at url: {}",
+                url_clone
+            )))
+        })
+        .wait()?;
 
     // determine testing (cli -> env -> config)
     let testing: bool = cli_config
@@ -442,14 +456,12 @@ fn combine_config(
 
     info!("determine cli concern");
     let cli_main_concern = validate_concern(
-        cli_config.main_concern_contract,
         cli_config.main_concern_user,
         cli_config.main_concern_abi,
     )?;
 
     info!("determine env concern");
     let env_main_concern = validate_concern(
-        env_config.main_concern_contract,
         env_config.main_concern_user,
         env_config.main_concern_abi,
     )?;
@@ -469,24 +481,34 @@ fn combine_config(
 
     // insert all full concerns into concerns and abis
     for full_concern in full_concerns {
+        let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
+
+        let mut full_concern_clone = full_concern.clone();
+        full_concern_clone.contract_address = contract_address;
+
         // store concern data in hash table
         abis.insert(
-            Concern::from(full_concern.clone()).clone(),
+            Concern::from(full_concern_clone.clone()).clone(),
             ConcernAbi {
-                abi: full_concern.abi.clone(),
+                abi: full_concern_clone.abi.clone(),
             },
         );
-        concerns.push(full_concern.into());
+        concerns.push(full_concern_clone.into());
     }
+
+    let contract_address = get_contract_address(main_concern.abi.clone(), network_id.clone())?;
+
+    let mut main_concern_clone = main_concern.clone();
+    main_concern_clone.contract_address = contract_address;
 
     // insert main full concern in concerns and abis
     abis.insert(
-        Concern::from(main_concern.clone()).clone(),
+        Concern::from(main_concern_clone.clone()).clone(),
         ConcernAbi {
-            abi: main_concern.abi.clone(),
+            abi: main_concern_clone.abi.clone(),
         },
     );
-    concerns.push(main_concern.clone().into());
+    concerns.push(main_concern_clone.clone().into());
 
     Ok(Configuration {
         url: url,
@@ -501,4 +523,18 @@ fn combine_config(
         confirmations: confirmations,
         query_port: query_port,
     })
+}
+
+fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
+    let mut file = File::open(abi)?;
+    let mut s = String::new();
+    file.read_to_string(&mut s)?;
+    let v: Value = serde_json::from_str(&s[..])
+        .chain_err(|| format!("could not read truffle json file"))?;
+
+    // retrieve the contract address
+    let contract_address_string = serde_json::to_string(&v["networks"][network_id]["address"])?;
+    let contract_address: Address = contract_address_string.parse()?;
+
+    Ok(contract_address)
 }
