@@ -88,7 +88,6 @@ pub struct ConcernAbi {
 /// A concern together with an ABI
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FullConcern {
-    contract_address: Address,
     user_address: Address,
     abi: PathBuf,
 }
@@ -96,7 +95,7 @@ struct FullConcern {
 impl From<FullConcern> for Concern {
     fn from(full: FullConcern) -> Self {
         Concern {
-            contract_address: full.contract_address,
+            contract_address: std::default::Default::default(),
             user_address: full.user_address,
         }
     }
@@ -339,7 +338,6 @@ fn validate_concern(
     // if some option is Some, both should be
     if user.is_some() || abi.is_some() {
         Ok(Some(FullConcern {
-            contract_address: std::default::Default::default(),
             user_address: user
                 .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
                     "Concern's user should be specified",
@@ -483,32 +481,32 @@ fn combine_config(
     for full_concern in full_concerns {
         let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
 
-        let mut full_concern_clone = full_concern.clone();
-        full_concern_clone.contract_address = contract_address;
+        let mut concern: Concern = full_concern.clone().into();
+        concern.contract_address = contract_address;
 
         // store concern data in hash table
         abis.insert(
-            Concern::from(full_concern_clone.clone()).clone(),
+            concern.clone(),
             ConcernAbi {
-                abi: full_concern_clone.abi.clone(),
+                abi: full_concern.abi.clone(),
             },
         );
-        concerns.push(full_concern_clone.into());
+        concerns.push(concern);
     }
 
     let contract_address = get_contract_address(main_concern.abi.clone(), network_id.clone())?;
 
-    let mut main_concern_clone = main_concern.clone();
-    main_concern_clone.contract_address = contract_address;
+    let mut concern: Concern = main_concern.clone().into();
+    concern.contract_address = contract_address;
 
     // insert main full concern in concerns and abis
     abis.insert(
-        Concern::from(main_concern_clone.clone()).clone(),
+        concern.clone(),
         ConcernAbi {
-            abi: main_concern_clone.abi.clone(),
+            abi: main_concern.abi.clone(),
         },
     );
-    concerns.push(main_concern_clone.clone().into());
+    concerns.push(concern.clone());
 
     Ok(Configuration {
         url: url,
