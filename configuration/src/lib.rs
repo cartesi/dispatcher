@@ -513,7 +513,7 @@ fn combine_config(
         testing: testing,
         max_delay: Duration::seconds(max_delay as i64),
         warn_delay: Duration::seconds(warn_delay as i64),
-        main_concern: main_concern.into(),
+        main_concern: concern,
         concerns: concerns,
         working_path: working_path,
         abis: abis,
@@ -531,8 +531,13 @@ fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
         .chain_err(|| format!("could not read truffle json file"))?;
 
     // retrieve the contract address
-    let contract_address_string = serde_json::to_string(&v["networks"][network_id]["address"])?;
-    let contract_address: Address = contract_address_string.parse()?;
+    let contract_address_str = match v["networks"][network_id]["address"].as_str() {
+        Some(address_str) => address_str.split_at(2).1,
+        None => return Err(Error::from(ErrorKind::InvalidConfig(String::from(
+            "Fail to parse contract address",
+        ))))
+    };
+    let contract_address: Address = contract_address_str.parse()?;
 
     Ok(contract_address)
 }
