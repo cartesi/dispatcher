@@ -231,6 +231,7 @@ pub struct Configuration {
     pub services: Vec<Service>,
     pub confirmations: usize,
     pub query_port: u16,
+    pub chain_id: u64
 }
 
 /// check if a given transport is well formed (having all valid arguments).
@@ -391,6 +392,19 @@ fn combine_config(
             )))
         })
         .wait()?;
+        
+    let url_clone = url.clone();
+    let chain_id: u64 = web3
+    .eth()
+    .chain_id()
+    .map_err(move |_e| {
+        Error::from(ErrorKind::ChainError(format!(
+            "no Ethereum node responding at url: {}",
+            url_clone
+        )))
+    })
+    .wait()?
+    .as_u64();
 
     // determine testing (cli -> env -> config)
     let testing: bool = cli_config
@@ -520,6 +534,7 @@ fn combine_config(
         services: file_config.services,
         confirmations: confirmations,
         query_port: query_port,
+        chain_id: chain_id
     })
 }
 

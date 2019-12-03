@@ -198,6 +198,7 @@ impl TransactionManager {
         let key = concern_data.key_pair.clone();
         let abi = concern_data.abi.clone();
         let confirmations: usize = (&self).config.confirmations;
+        let chain_id: u64 = (&self).config.chain_id;
 
         trace!("Getting nonce");
         let web3_gas_price = web3.clone();
@@ -293,7 +294,7 @@ impl TransactionManager {
                         value: request.value,
                         data: raw_data,
                     }
-                    .sign(&key.secret(), Some(15));
+                    .sign(&key.secret(), Some(chain_id));
 
                     info!("Sending transaction: {:?}", &request);
                     let raw = Bytes::from(rlp::encode(&signed_tx));
