@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,17 +22,15 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 pub mod dapp;
 
 extern crate configuration;
 extern crate error;
 extern crate ethereum_types;
+extern crate grpc;
 extern crate tokio;
 extern crate utils;
 extern crate web3;
-extern crate grpc;
 
 #[macro_use]
 extern crate serde_derive;
@@ -51,9 +49,11 @@ use std::str;
 
 use configuration::{Concern, Configuration};
 pub use error::*;
+use grpc::{Client, RequestOptions};
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server};
 use state::StateManager;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -64,13 +64,12 @@ use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
 use web3::futures::sync::{mpsc, oneshot};
 use web3::futures::{stream, Future, Stream};
-use grpc::{Client, RequestOptions};
-use std::collections::HashMap;
 
 pub use dapp::{
-    AddressField, AddressArray, AddressArray3, Archive, BoolField, BoolArray,
-    Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction, String32Field,
-    U256Array, U256Array4, U256Array5, U256Array6, U256Array9, U256Field
+    AddressArray, AddressArray3, AddressField, Archive, BoolArray, BoolField,
+    Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction,
+    String32Field, U256Array, U256Array4, U256Array5, U256Array6, U256Array9,
+    U256Field,
 };
 
 /// Responsible for querying the state of each concern, get a reaction
@@ -92,7 +91,7 @@ struct Assets {
     transaction_manager: Arc<Mutex<TransactionManager>>,
     state_manager: Arc<Mutex<StateManager>>,
     archive: Arc<Mutex<Archive>>,
-    clients: Arc<Mutex<HashMap<String, Arc<Mutex<Client>>>>>
+    clients: Arc<Mutex<HashMap<String, Arc<Mutex<Client>>>>>,
 }
 
 impl Assets {
@@ -101,7 +100,7 @@ impl Assets {
             transaction_manager: self.transaction_manager.clone(),
             state_manager: self.state_manager.clone(),
             archive: self.archive.clone(),
-            clients: self.clients.clone()
+            clients: self.clients.clone(),
         }
     }
 }
@@ -139,7 +138,11 @@ impl Dispatcher {
         info!("Creating grpc client");
         let mut clients = HashMap::new();
         for service in config.services.iter() {
-            let client = Client::new_plain(&service.transport.address.clone(), service.transport.port.clone(), Default::default())?;
+            let client = Client::new_plain(
+                &service.transport.address.clone(),
+                service.transport.port.clone(),
+                Default::default(),
+            )?;
             clients.insert(service.name.clone(), Arc::new(Mutex::new(client)));
         }
 
@@ -151,7 +154,7 @@ impl Dispatcher {
                 transaction_manager: Arc::new(Mutex::new(transaction_manager)),
                 state_manager: Arc::new(Mutex::new(state_manager)),
                 archive: Arc::new(Mutex::new(archive)),
-                clients: Arc::new(Mutex::new(clients))
+                clients: Arc::new(Mutex::new(clients)),
             },
         };
 
@@ -183,8 +186,8 @@ impl Dispatcher {
                     } else {
                         ([127, 0, 0, 1], port).into()
                     }
-                },
-                None => ([127, 0, 0, 1], port).into()
+                }
+                None => ([127, 0, 0, 1], port).into(),
             };
             let listener = tokio::net::TcpListener::bind(&addr)
                 .expect("could not bind to port");
@@ -213,7 +216,7 @@ struct QueryHandle {
 #[derive(Debug, PartialEq, Deserialize)]
 struct PostBody {
     index: usize,
-    payload: String
+    payload: String,
 }
 
 /// All possible queries that can be done to the server concerning the
@@ -222,7 +225,7 @@ struct PostBody {
 enum Query {
     Indices,
     Instance(usize),
-    Post(PostBody)
+    Post(PostBody),
 }
 
 // creates a future representing the background process that organizes
@@ -231,7 +234,7 @@ fn background_process<T: DApp<()>>(
     main_concern: Concern,
     assets: Assets,
     query_rx: mpsc::Receiver<QueryHandle>,
-) -> Box<Future<Item = (), Error = ()> + Send> {
+) -> Box<dyn Future<Item = (), Error = ()> + Send> {
     // during the course of execution, there are periodic (Tick) events,
     // or external queries concerning the current state. we need to react
     // to these two types of messages (inspired by Elm programming language)
@@ -273,7 +276,7 @@ fn background_process<T: DApp<()>>(
                 initial_state,
                 move |_state,
                       message|
-                      -> Box<Future<Item = State, Error = ()> + Send> {
+                      -> Box<dyn Future<Item = State, Error = ()> + Send> {
                     match message {
                         // message is a query, answer it appropriately
                         Message::Asked(q) => {
@@ -402,7 +405,7 @@ fn execute_reaction<T: DApp<()>>(
     index: usize,
     post_action: Option<String>,
     assets: Assets,
-) -> Box<Future<Item = (), Error = Error> + Send> {
+) -> Box<dyn Future<Item = (), Error = Error> + Send> {
     let state_manager_clone = assets.state_manager.clone();
     let state_manager_lock = state_manager_clone.lock().unwrap();
 
@@ -410,7 +413,7 @@ fn execute_reaction<T: DApp<()>>(
         state_manager_lock
             .get_instance(main_concern, index)
             .and_then(
-            move |instance| -> Box<Future<Item = (), Error = Error> + Send> {
+            move |instance| -> Box<dyn Future<Item = (), Error = Error> + Send> {
                 let transaction_manager =
                     assets.transaction_manager.lock().unwrap();
                 let mut archive = assets.archive.lock().unwrap();
@@ -509,7 +512,7 @@ fn process_transaction_request(
     index: usize,
     transaction_request: TransactionRequest,
     transaction_manager: &TransactionManager,
-) -> Box<Future<Item = (), Error = Error> + Send> {
+) -> Box<dyn Future<Item = (), Error = Error> + Send> {
     info!(
         "Send transaction (concern {:?}, index {}): {:?}",
         main_concern, index, transaction_request
@@ -539,7 +542,7 @@ fn process_transaction_request(
 fn replier(
     tx: mpsc::Sender<QueryHandle>,
     req: Request<Body>,
-) -> Box<Future<Item = Response<Body>, Error = std::io::Error> + Send> {
+) -> Box<dyn Future<Item = Response<Body>, Error = std::io::Error> + Send> {
     let (resp_tx, resp_rx) = oneshot::channel();
     let (_, body) = req.into_parts();
 
@@ -599,9 +602,11 @@ fn replier(
 }
 
 // send grpc request with binary data
-fn grpc_call_unary(client_arc: Arc<Mutex<Client>>, req: Vec<u8>, method_name: String)
- -> grpc::SingleResponse<Vec<u8>>
-{
+fn grpc_call_unary(
+    client_arc: Arc<Mutex<Client>>,
+    req: Vec<u8>,
+    method_name: String,
+) -> grpc::SingleResponse<Vec<u8>> {
     let client = client_arc.lock().unwrap();
 
     let method = Arc::new(grpc::rt::MethodDescriptor {

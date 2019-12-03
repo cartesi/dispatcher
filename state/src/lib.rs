@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -21,8 +21,6 @@
 // under the Apache License, version 2, or a compatible permissive license, and can
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
-
-
 
 //#![feature(transpose_result)]
 
@@ -200,7 +198,7 @@ impl StateManager {
     fn get_expanded_cache(
         &self,
         concern: Concern,
-    ) -> Box<Future<Item = Arc<ConcernCache>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Arc<ConcernCache>, Error = Error> + Send> {
         // first get the cached instances
         let mut concern_cache = match self.get_concern_cache(&concern) {
             Ok(concern) => concern,
@@ -303,7 +301,7 @@ impl StateManager {
     pub fn get_indices(
         &self,
         concern: Concern,
-    ) -> Box<Future<Item = Vec<usize>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<usize>, Error = Error> + Send> {
         // query tentative instances
         let expanded_cache = self
             .get_expanded_cache(concern)
@@ -375,7 +373,7 @@ impl StateManager {
         &self,
         concern: Concern,
         index: usize,
-    ) -> Box<Future<Item = Instance, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Instance, Error = Error> + Send> {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // this first implementation is completely synchronous
         // since we wait for all internal futures and then return
@@ -415,8 +413,9 @@ impl StateManager {
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
 
-        let args = match function.encode_input(&(U256::from(index), concern.user_address).into_tokens())
-        {
+        let args = match function.encode_input(
+            &(U256::from(index), concern.user_address).into_tokens(),
+        ) {
             Ok(s) => s,
             Err(e) => return Box::new(futures::future::err(Error::from(e))),
         };
@@ -469,7 +468,9 @@ impl StateManager {
                 .wait()
             {
                 Ok(s) => s,
-                Err(e) => return Box::new(futures::future::err(Error::from(e))),
+                Err(e) => {
+                    return Box::new(futures::future::err(Error::from(e)))
+                }
             };
         // vector of addresses and indices should have the same length
         assert_eq!(sub_address.len(), sub_indices.len());

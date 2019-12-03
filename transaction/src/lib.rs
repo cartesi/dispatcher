@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 //! Server that sends transactions to the blockchain, dealing with
 //! several issues, like estimating gas usage and waiting for
 //! confirmations
@@ -36,8 +34,8 @@ extern crate error;
 extern crate structopt;
 #[macro_use]
 extern crate log;
-extern crate ethabi;
 extern crate common_types;
+extern crate ethabi;
 extern crate ethereum_types;
 extern crate ethjson;
 extern crate ethkey;
@@ -47,10 +45,10 @@ extern crate rlp;
 extern crate serde_json;
 extern crate web3;
 
+use common_types::transaction::{Action, Transaction};
 use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
-use common_types::transaction::{Action, Transaction};
 use ethereum_types::U256;
 use ethkey::KeyPair;
 use serde_json::Value;
@@ -181,7 +179,7 @@ impl TransactionManager {
     pub fn send(
         &self,
         request: TransactionRequest,
-    ) -> Box<Future<Item = (), Error = error::Error> + Send> {
+    ) -> Box<dyn Future<Item = (), Error = error::Error> + Send> {
         // async_block needs owned values, so let us clone some stuff
         let web3 = Arc::clone(&self.web3);
         let request = request.clone();
@@ -209,7 +207,10 @@ impl TransactionManager {
         Box::new(
             web3.clone()
                 .eth()
-                .transaction_count(web3::types::H160::from_slice(&key.address().to_vec()[..]), None)
+                .transaction_count(
+                    web3::types::H160::from_slice(&key.address().to_vec()[..]),
+                    None,
+                )
                 .map_err(|e| {
                     error::Error::from(
                         e.chain_err(|| "could not retrieve nonce"),

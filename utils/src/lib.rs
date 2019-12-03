@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 #[macro_use]
 extern crate log;
 extern crate configuration;
@@ -40,11 +38,11 @@ use web3::types::{BlockId, BlockNumber};
 use web3::Transport;
 
 pub trait EthExt<T: Transport> {
-    fn get_delay(self) -> Box<Future<Item = i64, Error = Error>>;
+    fn get_delay(self) -> Box<dyn Future<Item = i64, Error = Error>>;
 }
 
 impl<T: Transport + 'static> EthExt<T> for web3::api::Eth<T> {
-    fn get_delay(self) -> Box<Future<Item = i64, Error = Error>> {
+    fn get_delay(self) -> Box<dyn Future<Item = i64, Error = Error>> {
         Box::new(
             self.block(BlockId::Number(BlockNumber::Latest))
                 .and_then(|block| {
@@ -79,18 +77,18 @@ pub trait EthWeb3<T: Transport> {
     fn test_connection(
         &self,
         &configuration::Configuration,
-    ) -> Box<Future<Item = (), Error = Error>>;
+    ) -> Box<dyn Future<Item = (), Error = Error>>;
     fn node_in_sync(
         &self,
         &configuration::Configuration,
-    ) -> Box<Future<Item = (), Error = Error>>;
+    ) -> Box<dyn Future<Item = (), Error = Error>>;
 }
 
 impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
     fn test_connection(
         &self,
         config: &configuration::Configuration,
-    ) -> Box<Future<Item = (), Error = Error>> {
+    ) -> Box<dyn Future<Item = (), Error = Error>> {
         info!("Testing Ethereum node's responsiveness");
         let url = config.url.clone();
         let web3_clone = self.web3().clone();
@@ -110,7 +108,7 @@ impl<T: Transport + 'static> EthWeb3<T> for web3::Web3<T> {
     fn node_in_sync(
         &self,
         ref config: &configuration::Configuration,
-    ) -> Box<Future<Item = (), Error = Error>> {
+    ) -> Box<dyn Future<Item = (), Error = Error>> {
         if config.testing {
             info!("Testing if Ethereum's node is up to date");
             let warn_delay = config.warn_delay.clone();

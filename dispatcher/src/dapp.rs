@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 use super::error::*;
 use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
@@ -40,22 +38,30 @@ impl Archive {
     /// Creates a NewArchive
     pub fn new() -> Result<Archive> {
         Ok(Archive {
-            hash_map: HashMap::new()
+            hash_map: HashMap::new(),
         })
     }
 
-    pub fn get_response(&self, service: String, key: String, method: String, request: Vec<u8>)
-     -> Result<std::result::Result<Vec<u8>, String>> {
+    pub fn get_response(
+        &self,
+        service: String,
+        key: String,
+        method: String,
+        request: Vec<u8>,
+    ) -> Result<std::result::Result<Vec<u8>, String>> {
         match self.hash_map.get(&key) {
-            Some(response) => {
-                Ok(response.clone())
-            }
-            None => {Err(Error::from(ErrorKind::ArchiveMissError(service, key, method, request)))}
+            Some(response) => Ok(response.clone()),
+            None => Err(Error::from(ErrorKind::ArchiveMissError(
+                service, key, method, request,
+            ))),
         }
     }
 
-    pub fn insert(&mut self, key: String, response: std::result::Result<Vec<u8>, String>)
-     -> Option<std::result::Result<Vec<u8>, String>> {
+    pub fn insert(
+        &mut self,
+        key: String,
+        response: std::result::Result<Vec<u8>, String>,
+    ) -> Option<std::result::Result<Vec<u8>, String>> {
         self.hash_map.insert(key, response)
     }
 
@@ -84,8 +90,17 @@ pub enum Reaction {
 pub trait DApp<T> {
     /// The function that makes a certain dapp react to the state of the
     /// instance
-    fn react(&state::Instance, &Archive, &Option<String>, &T) -> Result<Reaction>;
-    fn get_pretty_instance(&state::Instance, &Archive, &T) -> Result<state::Instance>;
+    fn react(
+        &state::Instance,
+        &Archive,
+        &Option<String>,
+        &T,
+    ) -> Result<Reaction>;
+    fn get_pretty_instance(
+        &state::Instance,
+        &Archive,
+        &T,
+    ) -> Result<state::Instance>;
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -128,7 +143,6 @@ pub enum FieldType {
     Bytes32ArrayType,
     #[serde(rename = "bytes32[3]")]
     Bytes32Array3Type,
-
 }
 
 #[derive(Serialize, Deserialize)]
