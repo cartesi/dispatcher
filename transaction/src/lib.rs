@@ -293,7 +293,7 @@ impl TransactionManager {
                         value: request.value,
                         data: raw_data,
                     }
-                    .sign(&key.secret(), Some(69));
+                    .sign(&key.secret(), Some(15));
 
                     info!("Sending transaction: {:?}", &request);
                     let raw = Bytes::from(rlp::encode(&signed_tx));
