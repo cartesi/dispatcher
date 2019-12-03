@@ -9,7 +9,7 @@ authors = ["Cartesi Team"]
 envy = "0.3"
 serde_yaml = "0.8"
 error-chain = "0.12.0"
-web3 = { git = "https://github.com/tomusdrw/rust-web3", tag = "v0.6.0" }
+web3 = { git = "https://github.com/cartesi/rust-web3", branch = "v0.6.0-fix-estimateGas" }
 time = "0.1"
 ethkey = { git = "https://github.com/cartesi/parity-ethereum", branch = "stable-fixed" }
 rustc-hex = "2.0.1"
