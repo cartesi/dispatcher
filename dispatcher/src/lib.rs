@@ -44,10 +44,11 @@ extern crate serde;
 extern crate serde_json;
 extern crate state;
 extern crate transaction;
+extern crate transport;
 
 use std::str;
 
-use configuration::{Concern, Configuration, GenericTransport};
+use configuration::{Concern, Configuration};
 pub use error::*;
 use grpc::{Client, RequestOptions};
 use hyper::service::service_fn;
@@ -64,6 +65,7 @@ use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
 use web3::futures::sync::{mpsc, oneshot};
 use web3::futures::{stream, Future, Stream};
+use transport::GenericTransport;
 
 pub use dapp::{
     AddressArray, AddressArray3, AddressField, Archive, BoolArray, BoolField,

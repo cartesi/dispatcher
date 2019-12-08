@@ -40,8 +40,9 @@ extern crate leveldb;
 extern crate serde_json;
 extern crate utils;
 extern crate web3;
+extern crate transport;
 
-use configuration::{Concern, Configuration, GenericTransport};
+use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::{Param, Token};
 use ethereum_types::{Address, U256};
@@ -63,6 +64,7 @@ use web3::futures::stream;
 use web3::futures::Future;
 use web3::futures::Stream;
 use web3::types::{Bytes, CallRequest};
+use transport::GenericTransport;
 
 use web3::contract::tokens::Tokenize;
 

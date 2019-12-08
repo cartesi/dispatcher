@@ -12,6 +12,7 @@ configuration = { path = "../configuration" }
 transaction = { path = "../transaction" }
 state = { path = "../state" }
 utils = { path = "../utils" }
+transport = { path = "../transport" }
 log = "0.4"
 env_logger = "0.6.0"
 ethereum-types = "0.4"

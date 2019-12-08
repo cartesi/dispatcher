@@ -1,24 +1,16 @@
 [package]
-description = "Cartesi Configuration"
+description = "Cartesi Transport"
 homepage = "https://cartesi.io"
-name = "configuration"
+name = "transport"
 version = "0.1.0"
 authors = ["Cartesi Team"]
 
 [dependencies]
 log = "0.4"
-env_logger = "0.6.0"
-structopt = "0.2"
-envy = "0.3"
 error = { path = "../error" }
-transport = { path = "../transport" }
-serde = "1.0.0"
-serde_derive = "1.0.0"
 serde_yaml = "0.8"
 serde_json = "1.0"
-time = "0.1"
-ethereum-types = "0.4"
-hex = "0.3.2"
-db-key = "0.0.5"
-ethabi = "6.1.0"
+jsonrpc-core = "8.0.1"
+url = "2.1.0"
+error-chain = "0.12.0"
 web3 = { git = "https://github.com/cartesi/rust-web3", branch = "v0.6.0-implement-chain-id" }

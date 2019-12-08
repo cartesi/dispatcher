@@ -12,6 +12,7 @@ structopt = "0.2"
 envy = "0.3"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
+transport = { path = "../transport" }
 serde = "1.0.0"
 serde_derive = "1.0.0"
 serde_yaml = "0.8"

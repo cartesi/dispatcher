@@ -10,6 +10,7 @@ log = "0.4"
 env_logger = "0.6.0"
 error = { path = "../error" }
 configuration = { path = "../configuration" }
+transport = { path = "../transport" }
 ethereum-types = "0.4"
 web3 = { git = "https://github.com/cartesi/rust-web3", branch="v0.6.0-implement-chain-id" }
 ethabi = "6.1.0"

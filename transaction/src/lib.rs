@@ -44,9 +44,10 @@ extern crate keccak_hash;
 extern crate rlp;
 extern crate serde_json;
 extern crate web3;
+extern crate transport;
 
 use common_types::transaction::{Action, Transaction};
-use configuration::{Concern, Configuration, GenericTransport};
+use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
@@ -60,6 +61,7 @@ use std::time;
 use web3::futures::future::err;
 use web3::futures::Future;
 use web3::types::Bytes;
+use transport::GenericTransport;
 
 /// In the future there could be several strategies to submit a transaction.
 /// Simplest is based on estimated gas cost.
