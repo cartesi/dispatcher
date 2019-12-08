@@ -46,7 +46,7 @@ extern crate serde_json;
 extern crate web3;
 
 use common_types::transaction::{Action, Transaction};
-use configuration::{Concern, Configuration};
+use configuration::{Concern, Configuration, GenericTransport};
 use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
@@ -91,7 +91,7 @@ struct ConcernData {
 pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
-    web3: Arc<web3::Web3<web3::transports::Http>>,
+    web3: Arc<web3::Web3<GenericTransport>>,
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -131,7 +131,7 @@ impl TransactionManager {
     /// Creates a new Transaction manager, based on the core's configuration
     pub fn new(
         config: Configuration,
-        web3: web3::Web3<web3::transports::Http>,
+        web3: web3::Web3<GenericTransport>,
     ) -> Result<TransactionManager> {
         let mut concern_data = HashMap::new();
         // loop through each concern, adding them to the concern's data

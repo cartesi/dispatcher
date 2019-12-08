@@ -20,4 +20,5 @@ ethereum-types = "0.4"
 hex = "0.3.2"
 db-key = "0.0.5"
 ethabi = "6.1.0"
+jsonrpc-core = "8.0.1"
 web3 = { git = "https://github.com/cartesi/rust-web3", branch = "v0.6.0-implement-chain-id" }

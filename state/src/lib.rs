@@ -41,7 +41,7 @@ extern crate serde_json;
 extern crate utils;
 extern crate web3;
 
-use configuration::{Concern, Configuration};
+use configuration::{Concern, Configuration, GenericTransport};
 use error::*;
 use ethabi::{Param, Token};
 use ethereum_types::{Address, U256};
@@ -76,7 +76,7 @@ pub struct Instance {
 }
 
 struct ConcernData {
-    contract: Arc<web3::contract::Contract<web3::transports::http::Http>>,
+    contract: Arc<web3::contract::Contract<GenericTransport>>,
     abi: Arc<ethabi::Contract>,
     file_name: String,
 }
@@ -88,7 +88,7 @@ struct ConcernCache {
 }
 
 pub struct StateManager {
-    web3: web3::Web3<web3::transports::http::Http>,
+    web3: web3::Web3<GenericTransport>,
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     concern_data: HashMap<Concern, ConcernData>,
     database: Arc<Database<Concern>>,
@@ -109,7 +109,7 @@ impl StateManager {
                 })?;
 
         info!("Trying to connect to Eth node at {}", &config.url[..]);
-        let (_eloop, transport) = web3::transports::Http::new(&config.url[..])
+        let (_eloop, transport) = GenericTransport::new(&config.url[..])
             .chain_err(|| {
                 format!("could not connect to Eth node at url: {}", &config.url)
             })?;

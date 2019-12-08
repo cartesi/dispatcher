@@ -47,7 +47,7 @@ extern crate transaction;
 
 use std::str;
 
-use configuration::{Concern, Configuration};
+use configuration::{Concern, Configuration, GenericTransport};
 pub use error::*;
 use grpc::{Client, RequestOptions};
 use hyper::service::service_fn;
@@ -77,7 +77,7 @@ pub use dapp::{
 /// the other services (Emulator, Logger, etc)
 pub struct Dispatcher {
     config: Configuration,
-    _web3: web3::api::Web3<web3::transports::http::Http>, // to stay in scope
+    _web3: web3::api::Web3<GenericTransport>, // to stay in scope
     _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
     assets: Assets,
 }
@@ -114,7 +114,7 @@ impl Dispatcher {
             .chain_err(|| format!("could not load configuration"))?;
 
         info!("Trying to connect to Eth node at {}", &config.url[..]);
-        let (_eloop, transport) = web3::transports::Http::new(&config.url[..])
+        let (_eloop, transport) = GenericTransport::new(&config.url[..])
             .chain_err(|| {
                 format!("could not connect to Eth node at url: {}", &config.url)
             })?;

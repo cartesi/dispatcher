@@ -43,6 +43,7 @@ extern crate hex;
 extern crate time;
 extern crate web3;
 extern crate serde_json;
+extern crate jsonrpc_core;
 
 const DEFAULT_CONFIG_PATH: &str = "config.yaml";
 const DEFAULT_MAX_DELAY: u64 = 500;
@@ -76,6 +77,66 @@ impl fmt::Display for Concern {
              User: {}",
             self.contract_address, self.user_address
         )
+    }
+}
+
+/// Generic transport
+#[derive(Debug, Clone)]
+pub struct GenericTransport {
+    http: Option<web3::transports::http::Http>,
+    ws: Option<web3::transports::ws::WebSocket>,
+}
+
+impl GenericTransport {
+    pub fn new(url: &str) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
+        let mut generic_transport = GenericTransport {
+            http: None,
+            ws: None
+        };
+
+        if let Ok(transport) = web3::transports::Http::new(&url[..]) {
+            generic_transport.http = Some(transport.1);
+            info!("GenericTransport created successfully with underlying Http");
+            return Ok((transport.0, generic_transport));
+        }
+
+        if let Ok(transport) = web3::transports::WebSocket::new(&url[..]) {
+            generic_transport.ws = Some(transport.1);
+            info!("GenericTransport created successfully with underlying WebSocket");
+            return Ok((transport.0, generic_transport));
+        }
+
+        return Err(error::Error::from(
+            "Invalid transport type."
+        ));
+    }
+}
+
+impl web3::Transport for GenericTransport {
+    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send + 'static>;
+    fn send(&self, id: web3::RequestId, request: jsonrpc_core::Call) -> Self::Out {
+        if let Some(s) = &self.http {
+            return Box::new(s.send(id, request));
+        }
+        if let Some(s) = &self.ws {
+            return Box::new(s.send(id, request));
+        }
+
+        return Box::new(
+            web3::futures::future::err(
+                web3::error::Error::from("Invalid transport type.")
+            )
+        );
+    }
+    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::Call) {
+        if let Some(s) = &self.http {
+            return s.prepare(method, params);
+        }
+        if let Some(s) = &self.ws {
+            return s.prepare(method, params);
+        }
+        
+        return (std::default::Default::default(), jsonrpc_core::Call::Invalid(jsonrpc_core::Id::Num(999)));
     }
 }
 
@@ -374,7 +435,7 @@ fn combine_config(
         ))))?;
 
     info!("Trying to connect to Eth node at {}", &url[..]);
-    let (_eloop, transport) = web3::transports::Http::new(&url[..])
+    let (_eloop, transport) = GenericTransport::new(&url[..])
         .chain_err(|| {
             format!("could not connect to Eth node at url: {}", &url)
         })?;
