@@ -55,6 +55,7 @@ error_chain! {
         Utf8(std::str::Utf8Error);
         Grpc(grpc::Error);
         Hyper(hyper::Error);
+        Url(url::ParseError);
     }
     links {
         //Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];

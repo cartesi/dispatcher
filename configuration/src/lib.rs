@@ -31,6 +31,8 @@ extern crate env_logger;
 extern crate envy;
 extern crate error;
 
+#[macro_use]
+extern crate error_chain;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -41,6 +43,7 @@ extern crate db_key;
 extern crate ethereum_types;
 extern crate hex;
 extern crate time;
+extern crate url;
 extern crate web3;
 extern crate serde_json;
 extern crate jsonrpc_core;
@@ -88,27 +91,35 @@ pub struct GenericTransport {
 }
 
 impl GenericTransport {
-    pub fn new(url: &str) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
+    pub fn new(connstr: &str) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
         let mut generic_transport = GenericTransport {
             http: None,
             ws: None
         };
 
-        if let Ok(transport) = web3::transports::Http::new(&url[..]) {
-            generic_transport.http = Some(transport.1);
-            info!("GenericTransport created successfully with underlying Http");
-            return Ok((transport.0, generic_transport));
+        match url::Url::parse(connstr)?.scheme() {
+            "http" | "https" => {
+                let transport = web3::transports::Http::new(&connstr[..])
+                .chain_err(|| {
+                    format!("could not connect to Eth node with Http")
+                })?;
+                generic_transport.http = Some(transport.1);
+                info!("GenericTransport created successfully with underlying Http");
+                return Ok((transport.0, generic_transport));
+            },
+            "ws" | "wss" => {
+                let transport = web3::transports::WebSocket::new(&connstr[..]).chain_err(|| {
+                    format!("could not connect to Eth node with WebSocket")
+                })?;
+                generic_transport.ws = Some(transport.1);
+                info!("GenericTransport created successfully with underlying WebSocket");
+                return Ok((transport.0, generic_transport));
+            }
+            _ => bail!(ErrorKind::InvalidConfig(
+                "Need to provide a valid http(s)/ws url (config file, command line or env)"
+                    .to_string(),
+            )),
         }
-
-        if let Ok(transport) = web3::transports::WebSocket::new(&url[..]) {
-            generic_transport.ws = Some(transport.1);
-            info!("GenericTransport created successfully with underlying WebSocket");
-            return Ok((transport.0, generic_transport));
-        }
-
-        return Err(error::Error::from(
-            "Invalid transport type."
-        ));
     }
 }
 
