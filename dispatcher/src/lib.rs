@@ -70,7 +70,7 @@ use transport::GenericTransport;
 pub use dapp::{
     AddressArray, AddressArray3, AddressField, Archive, BoolArray, BoolField,
     Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction,
-    String32Field, U256Array, U256Array4, U256Array5, U256Array6, U256Array9,
+    String32Field, U256Array, U256Array3, U256Array4, U256Array5, U256Array6, U256Array9,
     U256Field,
 };
 

@@ -125,6 +125,8 @@ pub enum FieldType {
     U8Type,
     #[serde(rename = "bytes32")]
     Bytes32Type,
+    #[serde(rename = "uint256[3]")]
+    U256Array3Type,
     #[serde(rename = "uint256[4]")]
     U256Array4Type,
     #[serde(rename = "uint256[5]")]
@@ -183,6 +185,14 @@ pub struct U256Array {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: Vec<U256>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct U256Array3 {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    pub value: [U256; 3],
 }
 
 #[derive(Serialize, Deserialize)]
