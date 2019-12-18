@@ -79,6 +79,7 @@ pub struct TransactionRequest {
     pub value: U256,
     pub function: String,
     pub data: Vec<Token>,
+    pub gas: Option<U256>,
     pub strategy: Strategy,
 }
 
@@ -263,20 +264,28 @@ impl TransactionManager {
                     trace!("Estimate total gas usage");
                     let request_string =
                         format!("{:?}", request_gas_usage.clone());
-                    web3_gas_usage
-                        .eth()
-                        .estimate_gas(call_request, None)
-                        .map_err(|e| {
-                            error::Error::from(e.chain_err(move || {
-                                format!(
-                                "could not estimate gas usage for call {:?}",
-                                request_string
-                            )
-                            }))
-                        })
-                        .map(move |total_gas| {
-                            (nonce, gas_price, total_gas, raw_data)
-                        })
+                    match request_gas_usage.gas {
+                        Some(gas) => {
+                            Ok((nonce, gas_price, gas, raw_data))
+                        },
+                        None => {
+                            web3_gas_usage
+                            .eth()
+                            .estimate_gas(call_request, None)
+                            .map_err(|e| {
+                                error::Error::from(e.chain_err(move || {
+                                    format!(
+                                    "could not estimate gas usage for call {:?}",
+                                    request_string
+                                )
+                                }))
+                            })
+                            .map(move |total_gas| {
+                                (nonce, gas_price, total_gas, raw_data)
+                            })
+                            .wait()
+                        }
+                    }
                 })
                 .and_then(move |(nonce, gas_price, total_gas, raw_data)| {
                     trace!("Gas usage estimated to be {}", total_gas);
