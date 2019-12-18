@@ -264,28 +264,19 @@ impl TransactionManager {
                     trace!("Estimate total gas usage");
                     let request_string =
                         format!("{:?}", request_gas_usage.clone());
-                    match request_gas_usage.gas {
-                        Some(gas) => {
-                            Ok((nonce, gas_price, gas, raw_data))
-                        },
-                        None => {
-                            web3_gas_usage
-                            .eth()
-                            .estimate_gas(call_request, None)
-                            .map_err(|e| {
-                                error::Error::from(e.chain_err(move || {
-                                    format!(
-                                    "could not estimate gas usage for call {:?}",
-                                    request_string
-                                )
-                                }))
-                            })
-                            .map(move |total_gas| {
-                                (nonce, gas_price, total_gas, raw_data)
-                            })
-                            .wait()
-                        }
-                    }
+
+                    get_gas(web3_gas_usage, call_request, request_gas_usage)
+                    .map_err(|e| {
+                        error::Error::from(e.chain_err(move || {
+                            format!(
+                            "could not estimate gas usage for call {:?}",
+                            request_string
+                        )
+                        }))
+                    })
+                    .map(move |total_gas| {
+                        (nonce, gas_price, total_gas, raw_data)
+                    })
                 })
                 .and_then(move |(nonce, gas_price, total_gas, raw_data)| {
                     trace!("Gas usage estimated to be {}", total_gas);
@@ -327,5 +318,24 @@ impl TransactionManager {
                     })
                 }),
         )
+    }
+}
+    
+fn get_gas(
+    web3: Arc<web3::Web3<GenericTransport>>,
+    call_request: web3::types::CallRequest,
+    request: TransactionRequest
+) -> Box<dyn Future<Item = U256, Error = web3::Error> + Send> {
+    match request.gas {
+        Some(gas) => {
+            return Box::new(web3::futures::future::ok::<U256, _>(gas));
+        },
+        None => {
+            return Box::new(
+                web3
+                .eth()
+                .estimate_gas(call_request, None)
+            );
+        }
     }
 }
