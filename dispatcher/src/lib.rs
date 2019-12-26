@@ -503,6 +503,9 @@ fn execute_reaction<T: DApp<()>>(
                     Reaction::Idle => {
                         Box::new(web3::futures::future::ok::<(), _>(()))
                     }
+                    Reaction::Terminate => {
+                        std::process::exit(0)
+                    }
                 }
             },
         ),

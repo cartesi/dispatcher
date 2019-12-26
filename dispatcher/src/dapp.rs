@@ -84,6 +84,7 @@ impl Archive {
 #[derive(Debug)]
 pub enum Reaction {
     Transaction(TransactionRequest),
+    Terminate,
     Idle,
 }
 
