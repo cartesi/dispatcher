@@ -186,12 +186,12 @@ An example of such file would be the following:
     # This is a config file for a dApp
     # starting with the list of concerns
     concerns:
-      -
-        contract: 0xf778b86fa74e846c4f0a1fbd1335fe81c00a0c91
-        address: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0
-      -
-        contract: 0xfffd933a0bc612844eaf0c6fe3e5b8e9b6c1d19c
-        address: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0
+      - 
+        abi: "./build/contracts/PartitionInstantiator.json"
+        user_address: "0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0"
+      - 
+        abi: "./build/contracts/MMInstantiator.json"
+        user_address: "0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0"
 
 ## Conformant Contracts
 
@@ -241,7 +241,8 @@ It should return a list of active and concerning instances:
 The second type of queries that the SM receives inspects the state of a given instance:
 
     { contract: 0xf778b86fa74e846c4f0a1fbd1335fe81c00a0c91,
-      instance: 23
+      instance: 23,
+      address: 0x6ac7ea33f8831ea9dcc53393aaa88b25a785dbf0
     }
 
 The response of this query gives simply the result the `getState` call:
