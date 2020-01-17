@@ -303,6 +303,7 @@ impl StateManager {
     pub fn get_indices(
         &self,
         concern: Concern,
+        active: bool
     ) -> Box<dyn Future<Item = Vec<usize>, Error = Error> + Send> {
         // query tentative instances
         let expanded_cache = self
@@ -326,48 +327,57 @@ impl StateManager {
         );
         return Box::new(expanded_cache.and_then(move |cache| {
             let cache_list = cache.list_instances.clone();
-            trace!("Removing inactive instances");
             // for each instance in the list, build a future that resolves
             // to whether that instance is active
-            let active_futures = cache_list.iter().map(|index| {
-                let i = index.clone();
-                contract
-                    .query(
-                        "isActive",
-                        U256::from(i),
-                        None,
-                        Options::default(),
-                        None,
-                    )
-                    .map(move |active: bool| (i, active))
-                    .map_err(|e| {
-                        Error::from(e)
-                            .chain_err(|| "error while querying isActive")
-                    })
-            });
-            // create a stream from the above list of futures as they resolve
-            stream::futures_unordered(active_futures)
-                .filter_map(move |(index, is_active)| {
-                    Some(index).filter(|_| is_active)
-                })
-                .collect()
-                .map(move |vector_of_indices| {
-                    trace!("Active instances are: {:?}", vector_of_indices);
 
-                    let concern_cache = ConcernCache {
-                        last_maximum_index: cache.last_maximum_index,
-                        list_instances: vector_of_indices.clone(),
-                    };
+            let concern_cache = ConcernCache {
+                last_maximum_index: cache.last_maximum_index,
+                list_instances: cache_list.clone(),
+            };
 
-                    trace!("Writing relevant instances to state database");
-                    let write_opts = WriteOptions::new();
-                    let value =
-                        serde_json::to_string(&concern_cache).unwrap().clone();
-                    database
-                        .put(write_opts, concern, value.as_bytes())
-                        .unwrap();
-                    vector_of_indices
-                })
+            trace!("Writing relevant instances to state database");
+            let write_opts = WriteOptions::new();
+            let value =
+                serde_json::to_string(&concern_cache).unwrap().clone();
+            database
+                .put(write_opts, concern, value.as_bytes())
+                .unwrap();
+
+            let vector_of_indices = match active {
+                true => {
+                    trace!("Removing inactive instances");
+                    let active_futures = cache_list.iter().map(|index| {
+                        let i = index.clone();
+                        contract
+                            .query(
+                                "isActive",
+                                U256::from(i),
+                                None,
+                                Options::default(),
+                                None,
+                            )
+                            .map(move |active: bool| (i, active))
+                            .map_err(|e| {
+                                Error::from(e)
+                                    .chain_err(|| "error while querying isActive")
+                            })
+                    });
+                    
+                    // create a stream from the above list of futures as they resolve
+                    Either::A(stream::futures_unordered(active_futures)
+                        .filter_map(move |(index, is_active)| {
+                            Some(index).filter(|_| is_active)
+                        })
+                        .collect()
+                        .map(move |active_indices| {
+                            active_indices
+                        }))
+                },
+                false => {
+                    Either::B(ok(cache_list))
+                }
+            };
+            vector_of_indices
         }));
     }
 

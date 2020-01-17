@@ -291,7 +291,7 @@ fn background_process<T: DApp<()>>(
                                     let indices = state_manager_query
                                         .lock()
                                         .unwrap()
-                                        .get_indices(main_concern_fold.clone())
+                                        .get_indices(main_concern_fold.clone(), false)
                                         .wait()
                                         .unwrap();
                                     // send result back from oneshot channel
@@ -359,7 +359,7 @@ fn background_process<T: DApp<()>>(
                             let stream_of_indices = state_manager_indices
                                 .lock()
                                 .unwrap()
-                                .get_indices(main_concern_fold.clone())
+                                .get_indices(main_concern_fold.clone(), true)
                                 .map_err(|e| {
                                     print_error(&e.chain_err(|| {
                                         format!("could not get issue indices")
