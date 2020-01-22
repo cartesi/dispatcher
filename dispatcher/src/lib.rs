@@ -52,7 +52,7 @@ use configuration::{Concern, Configuration};
 pub use error::*;
 use grpc::{Client, RequestOptions};
 use hyper::service::service_fn;
-use hyper::{Body, Request, Response, Server};
+use hyper::{Body, Request, Response, Server, StatusCode};
 use state::StateManager;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -221,6 +221,12 @@ struct PostBody {
     payload: String,
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Answer {
+    status_code: u16,
+    body: String,
+}
+
 /// All possible queries that can be done to the server concerning the
 /// state of instances
 #[derive(Debug, PartialEq, Deserialize)]
@@ -294,27 +300,53 @@ fn background_process<T: DApp<()>>(
                                         .get_indices(main_concern_fold.clone(), false)
                                         .wait()
                                         .unwrap();
+                                    let answer = Answer {
+                                        status_code: StatusCode::OK.as_u16(),
+                                        body: serde_json::to_string(&indices).unwrap()
+                                    };
                                     // send result back from oneshot channel
                                     q.oneshot.send(
-                                        serde_json::to_string(&indices).unwrap()
+                                        serde_json::to_string(&answer).unwrap()
                                     ).unwrap();
                                 },
                                 Query::Instance(i) => {
-                                    let instance = state_manager_query
+                                    let indices = state_manager_query
                                         .lock()
                                         .unwrap()
-                                        .get_instance(
-                                            main_concern_fold.clone(),
-                                            i
-                                        )
+                                        .get_indices(main_concern_fold.clone(), false)
                                         .wait()
                                         .unwrap();
-                                    let archive = assets_fold.archive.lock().unwrap();
-                                    let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
-                                    // send result back from oneshot channel
-                                    q.oneshot.send(
-                                        serde_json::to_string(&pretty_instance).unwrap()
-                                    ).unwrap();
+                                    
+                                    if !indices.contains(&i) {
+                                        let answer = Answer {
+                                            status_code: StatusCode::NOT_FOUND.as_u16(),
+                                            body: "index not instantiated!".into()
+                                        };
+                                        // send result back from oneshot channel
+                                        q.oneshot.send(
+                                            serde_json::to_string(&answer).unwrap()
+                                        ).unwrap();
+                                    } else {
+                                        let instance = state_manager_query
+                                            .lock()
+                                            .unwrap()
+                                            .get_instance(
+                                                main_concern_fold.clone(),
+                                                i
+                                            )
+                                            .wait()
+                                            .unwrap();
+                                        let archive = assets_fold.archive.lock().unwrap();
+                                        let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
+                                        let answer = Answer {
+                                            status_code: StatusCode::OK.as_u16(),
+                                            body: serde_json::to_string(&pretty_instance).unwrap()
+                                        };
+                                        // send result back from oneshot channel
+                                        q.oneshot.send(
+                                            serde_json::to_string(&answer).unwrap()
+                                        ).unwrap();
+                                    }
                                 },
                                 Query::Post(body) => {
                                     // clone assets to move inside
@@ -330,10 +362,13 @@ fn background_process<T: DApp<()>>(
                                         )
                                         .map_err(|e| print_error(&e)),
                                     );
-                                    let mut ok_status = HashMap::new();
-                                    ok_status.insert("status".to_string(), "ok".to_string());
+                                    let answer = Answer {
+                                        status_code: StatusCode::OK.as_u16(),
+                                        body: "".into()
+                                    };
+                                    // send result back from oneshot channel
                                     q.oneshot.send(
-                                        serde_json::to_string(&ok_status).unwrap()
+                                        serde_json::to_string(&answer).unwrap()
                                     ).unwrap();
                                 }
                             };
@@ -582,10 +617,12 @@ fn replier(
             .and_then(|_| {
                 // received response from background task
                 resp_rx
-                    .and_then(|answer| {
+                    .and_then(|answer_string| {
+                        let answer: Answer = serde_json::from_str(&answer_string).unwrap();
                         let response = Response::builder()
                             .header("Content-Type", " application/json")
-                            .body(Body::from(answer))
+                            .status(StatusCode::from_u16(answer.status_code).unwrap())
+                            .body(Body::from(answer.body))
                             .unwrap();
                         Ok(response)
                     })
