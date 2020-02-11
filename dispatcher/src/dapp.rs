@@ -28,17 +28,20 @@ use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer};
 use super::transaction::TransactionRequest;
 use super::HashMap;
+use super::state::ServiceStatus;
 
 /// The total archive, for each machine session
 pub struct Archive {
-    hash_map: HashMap<String, std::result::Result<Vec<u8>, String>>,
+    requests_cache: HashMap<String, std::result::Result<Vec<u8>, String>>,
+    service_status: HashMap<String, ServiceStatus>
 }
 
 impl Archive {
     /// Creates a NewArchive
     pub fn new() -> Result<Archive> {
         Ok(Archive {
-            hash_map: HashMap::new(),
+            requests_cache: HashMap::new(),
+            service_status: HashMap::new(),
         })
     }
 
@@ -49,7 +52,7 @@ impl Archive {
         method: String,
         request: Vec<u8>,
     ) -> Result<std::result::Result<Vec<u8>, String>> {
-        match self.hash_map.get(&key) {
+        match self.requests_cache.get(&key) {
             Some(response) => Ok(response.clone()),
             None => Err(Error::from(ErrorKind::ArchiveMissError(
                 service, key, method, request,
@@ -57,16 +60,40 @@ impl Archive {
         }
     }
 
-    pub fn insert(
+    pub fn get_service(
+        &self,
+        key: String,
+    ) -> ServiceStatus {
+        self.service_status.get(&key).unwrap_or(
+            &ServiceStatus {
+                service_name: "".into(),
+                service_method: "".into(),
+                status: 0,
+                description: "".into(),
+                progress: 0
+            }
+        )
+        .clone()
+    }
+
+    pub fn insert_response(
         &mut self,
         key: String,
         response: std::result::Result<Vec<u8>, String>,
     ) -> Option<std::result::Result<Vec<u8>, String>> {
-        self.hash_map.insert(key, response)
+        self.requests_cache.insert(key, response)
     }
 
-    pub fn remove(&mut self, key: String) {
-        self.hash_map.remove(&key);
+    pub fn insert_service(
+        &mut self,
+        key: String,
+        status: ServiceStatus,
+    ) -> Option<ServiceStatus> {
+        self.service_status.insert(key, status)
+    }
+
+    pub fn remove_response(&mut self, key: String) {
+        self.requests_cache.remove(&key);
     }
 }
 

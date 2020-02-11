@@ -68,11 +68,22 @@ use transport::GenericTransport;
 
 use web3::contract::tokens::Tokenize;
 
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceStatus {
+    pub service_name: String,
+    pub service_method: String,
+    pub status: u32,
+    pub description: String,
+    pub progress: u32
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Instance {
     pub name: String,
     pub concern: Concern,
     pub index: U256,
+    pub service_status: ServiceStatus,
     pub json_data: String,
     pub sub_instances: Vec<Box<Instance>>,
 }
@@ -503,11 +514,19 @@ impl StateManager {
             ));
         }
 
+        let default_status = ServiceStatus {
+            service_name: "".into(),
+            service_method: "".into(),
+            status: 0,
+            description: "".into(),
+            progress: 0
+        };
         // join the subinstances together to return the current instance
         let starting_instance = Instance {
             name: "".to_string(),
             concern: concern,
             index: U256::from(index),
+            service_status: default_status,
             json_data: json_data,
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             // include nonce

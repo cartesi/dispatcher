@@ -478,13 +478,13 @@ fn execute_reaction<T: DApp<()>>(
 
                                     match response {
                                         Ok(resp) => {
-                                            archive.insert(key.clone(), Ok(resp));
+                                            archive.insert_response(key.clone(), Ok(resp));
                                             return Box::new(web3::futures::future::ok::<(), _>(()));
                                         }
                                         Err(e) => {
                                             match e {
                                                 grpc::Error::GrpcMessage(msg) => {
-                                                    archive.insert(key.clone(), Err(msg.grpc_message.clone()));
+                                                    archive.insert_response(key.clone(), Err(msg.grpc_message.clone()));
                                                     return Box::new(web3::futures::future::ok::<(), _>(()));
                                                 }
                                                 _ => {
@@ -504,12 +504,12 @@ fn execute_reaction<T: DApp<()>>(
                             // remove the entry and let `ArchiveMissError` handle the rest
                             ErrorKind::ArchiveInvalidError(service, key, _m) => {
                                 trace!("handling ArchiveInvalidError for service: {}, and key: {}", service, key);
-                                archive.remove(key.clone());
+                                archive.remove_response(key.clone());
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
                             },
                             ErrorKind::ArchiveNeedsDummy(service, key, _m) => {
                                 trace!("handling ArchiveNeedsDummy for service: {}, and key: {}", service, key);
-                                archive.insert(key.clone(), Ok(Vec::new()));
+                                archive.insert_response(key.clone(), Ok(Vec::new()));
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
                             }
                             _ => {
