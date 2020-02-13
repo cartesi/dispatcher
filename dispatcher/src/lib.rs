@@ -454,7 +454,6 @@ fn execute_reaction<T: DApp<()>>(
                 let transaction_manager =
                     assets.transaction_manager.lock().unwrap();
                 let mut archive = assets.archive.lock().unwrap();
-                let clients = assets.clients.lock().unwrap();
 
                 // get reaction from dapp to this instance
                 let reaction = match T::react(&instance, &archive, &post_action, &())
@@ -466,52 +465,36 @@ fn execute_reaction<T: DApp<()>>(
                         match e.kind() {
                             // can't find specific data with `key` in the archive,
                             // try to get it from the service through grpc request
-                            ErrorKind::ArchiveMissError(service, key, method, request) => {
-                                trace!("handling ArchiveMissError for service: {}, and key: {}", service, key);
-                                if let Some(client) = clients.get(&service.clone()) {
-
-                                    let response = grpc_call_unary(
-                                        client.clone(),
-                                        request.clone(),
-                                        method.clone())
-                                    .wait_drop_metadata();
-
-                                    match response {
-                                        Ok(resp) => {
-                                            archive.insert_response(key.clone(), Ok(resp));
-                                            return Box::new(web3::futures::future::ok::<(), _>(()));
-                                        }
-                                        Err(e) => {
-                                            match e {
-                                                grpc::Error::GrpcMessage(msg) => {
-                                                    archive.insert_response(key.clone(), Err(msg.grpc_message.clone()));
-                                                    return Box::new(web3::futures::future::ok::<(), _>(()));
-                                                }
-                                                _ => {
-                                                    return Box::new(web3::futures::future::err(e.into()));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                return Box::new(
-                                    web3::futures::future::err(
-                                        Error::from(format!("Fail to get grpc client of {} service", service))
-                                    )
-                                );
+                            ErrorKind::ResponseMissError(service, key, method, request) => {
+                                trace!("handling ResponseMissError for service: {}, and key: {}", service, key);
+                                return send_grpc_request(&mut archive, assets.clients.clone(), request.to_vec(), method.into(), service.into(), key.into());
                             },
                             // the archive consists invalid data for `key`,
-                            // remove the entry and let `ArchiveMissError` handle the rest
-                            ErrorKind::ArchiveInvalidError(service, key, _m) => {
-                                trace!("handling ArchiveInvalidError for service: {}, and key: {}", service, key);
+                            // remove the entry and let `ResponseMissError` handle the rest
+                            ErrorKind::ResponseInvalidError(service, key, _m) => {
+                                trace!("handling ResponseInvalidError for service: {}, and key: {}", service, key);
                                 archive.remove_response(key.clone());
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
                             },
-                            ErrorKind::ArchiveNeedsDummy(service, key, _m) => {
-                                trace!("handling ArchiveNeedsDummy for service: {}, and key: {}", service, key);
+                            ErrorKind::ResponseNeedsDummy(service, key, _m) => {
+                                trace!("handling ResponseNeedsDummy for service: {}, and key: {}", service, key);
                                 archive.insert_response(key.clone(), Ok(Vec::new()));
                                 return Box::new(web3::futures::future::ok::<(), _>(()));
-                            }
+                            },
+                            ErrorKind::ServiceNeedsRetry(service, key, method, request, contract, status, progress, description) => {
+                                trace!("handling ServiceNeedsRetry, service: {}, key: {}, method: {}, contract: {}, status: {}, progress: {}, description: {}", service, key, method, contract, status, progress, description);
+                                    
+                                let service_status = state::ServiceStatus {
+                                    service_name: service.clone(),
+                                    service_method: method.clone(),
+                                    status: *status,
+                                    progress: *progress,
+                                    description: description.clone()
+                                };
+                                archive.insert_service(contract.clone(), service_status);
+                                return send_grpc_request(&mut archive, assets.clients.clone(), request.to_vec(), method.into(), service.into(), key.into());
+
+                            },
                             _ => {
                                 return Box::new(web3::futures::future::err(e));
                             }
@@ -641,6 +624,48 @@ fn replier(
             )
         });
     Box::new(query_future)
+}
+
+fn send_grpc_request(
+    archive: &mut Archive,
+    clients_arc: Arc<Mutex<HashMap<String, Arc<Mutex<Client>>>>>,
+    request: Vec<u8>,
+    method: String,
+    service: String,
+    key: String
+) -> Box<dyn Future<Item = (), Error = Error> + Send> {
+    let clients = clients_arc.lock().unwrap();
+    if let Some(client) = clients.get(&service.clone()) {
+
+        let response = grpc_call_unary(
+            client.clone(),
+            request.clone(),
+            method.clone())
+        .wait_drop_metadata();
+
+        match response {
+            Ok(resp) => {
+                archive.insert_response(key.clone(), Ok(resp));
+                return Box::new(web3::futures::future::ok::<(), _>(()));
+            }
+            Err(e) => {
+                match e {
+                    grpc::Error::GrpcMessage(msg) => {
+                        archive.insert_response(key.clone(), Err(msg.grpc_message.clone()));
+                        return Box::new(web3::futures::future::ok::<(), _>(()));
+                    }
+                    _ => {
+                        return Box::new(web3::futures::future::err(e.into()));
+                    }
+                }
+            }
+        }
+    }
+    return Box::new(
+        web3::futures::future::err(
+            Error::from(format!("Fail to get grpc client of {} service", service))
+        )
+    );
 }
 
 // send grpc request with binary data

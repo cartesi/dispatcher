@@ -32,7 +32,7 @@ use super::state::ServiceStatus;
 
 /// The total archive, for each machine session
 pub struct Archive {
-    requests_cache: HashMap<String, std::result::Result<Vec<u8>, String>>,
+    response_cache: HashMap<String, std::result::Result<Vec<u8>, String>>,
     service_status: HashMap<String, ServiceStatus>
 }
 
@@ -40,7 +40,7 @@ impl Archive {
     /// Creates a NewArchive
     pub fn new() -> Result<Archive> {
         Ok(Archive {
-            requests_cache: HashMap::new(),
+            response_cache: HashMap::new(),
             service_status: HashMap::new(),
         })
     }
@@ -52,9 +52,9 @@ impl Archive {
         method: String,
         request: Vec<u8>,
     ) -> Result<std::result::Result<Vec<u8>, String>> {
-        match self.requests_cache.get(&key) {
+        match self.response_cache.get(&key) {
             Some(response) => Ok(response.clone()),
-            None => Err(Error::from(ErrorKind::ArchiveMissError(
+            None => Err(Error::from(ErrorKind::ResponseMissError(
                 service, key, method, request,
             ))),
         }
@@ -81,7 +81,7 @@ impl Archive {
         key: String,
         response: std::result::Result<Vec<u8>, String>,
     ) -> Option<std::result::Result<Vec<u8>, String>> {
-        self.requests_cache.insert(key, response)
+        self.response_cache.insert(key, response)
     }
 
     pub fn insert_service(
@@ -93,7 +93,7 @@ impl Archive {
     }
 
     pub fn remove_response(&mut self, key: String) {
-        self.requests_cache.remove(&key);
+        self.response_cache.remove(&key);
     }
 }
 
