@@ -212,7 +212,7 @@ impl TransactionManager {
                 .eth()
                 .transaction_count(
                     web3::types::H160::from_slice(&key.address().to_vec()[..]),
-                    None,
+                    Some(web3::types::BlockNumber::Pending),
                 )
                 .map_err(|e| {
                     error::Error::from(
