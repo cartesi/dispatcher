@@ -168,6 +168,7 @@ impl Dispatcher {
         let main_concern_run = (&self).config.main_concern.clone();
         let assets_run = (&self).assets.clone();
         let port = (&self).config.query_port;
+        let polling_interval = (&self).config.polling_interval;
         tokio::run(lazy(move || {
             let (query_tx, query_rx) = mpsc::channel(1_024);
 
@@ -177,6 +178,7 @@ impl Dispatcher {
                 main_concern_run,
                 assets_run,
                 query_rx,
+                polling_interval
             ));
 
             // start listening to port for state queries
@@ -242,6 +244,7 @@ fn background_process<T: DApp<()>>(
     main_concern: Concern,
     assets: Assets,
     query_rx: mpsc::Receiver<QueryHandle>,
+    polling_interval: u64
 ) -> Box<dyn Future<Item = (), Error = ()> + Send> {
     // during the course of execution, there are periodic (Tick) events,
     // or external queries concerning the current state. we need to react
@@ -259,7 +262,7 @@ fn background_process<T: DApp<()>>(
     }
 
     // Interval at which we poll and dispatch instances
-    let tick_duration = Duration::from_secs(6);
+    let tick_duration = Duration::from_secs(polling_interval);
     let interval = Interval::new_interval(tick_duration)
         .map(|_| Message::Tick)
         .map_err(|_| ());
