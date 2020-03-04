@@ -392,7 +392,8 @@ fn combine_config(
     let network_id: String = web3
         .net()
         .version()
-        .map_err(move |_e| {
+        .map_err(move |e| {
+            error!("{}", e);
             Error::from(ErrorKind::ChainError(format!(
                 "no Ethereum node responding at url: {}",
                 url_clone
@@ -404,7 +405,8 @@ fn combine_config(
     let chain_id: u64 = web3
     .eth()
     .chain_id()
-    .map_err(move |_e| {
+    .map_err(move |e| {
+        error!("{}", e);
         Error::from(ErrorKind::ChainError(format!(
             "no Ethereum node responding at url: {}",
             url_clone

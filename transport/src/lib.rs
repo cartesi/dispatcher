@@ -37,10 +37,14 @@ extern crate url;
 extern crate web3;
 extern crate serde_json;
 extern crate jsonrpc_core;
+extern crate tokio_timer;
 
 use error::*;
 use serde_json::Value;
+use web3::futures::future;
 use web3::futures::Future;
+use std::time::Duration;
+use tokio_timer::Timer;
 
 
 /// Generic transport
@@ -90,7 +94,34 @@ impl web3::Transport for GenericTransport {
             return Box::new(s.send(id, request));
         }
         if let Some(s) = &self.ws {
-            return Box::new(s.send(id, request));
+            let duration = Duration::from_secs(10);
+            
+            let timer = Timer::default();
+            let timeout = timer.sleep(duration);
+
+            let timeout_send = s.send(id, request).select2(timeout)
+                .then(|res| -> Self::Out {
+                    match res {
+                        Ok(future::Either::A((v, _))) => Box::new(
+                                web3::futures::future::ok::<Value, web3::error::Error>(v)
+                            ),
+                        Ok(future::Either::B((_, _))) => Box::new(
+                                web3::futures::future::err(
+                                    web3::error::Error::from("Timeout sending request.")
+                                )
+                            ),
+                        Err(future::Either::A((e, _))) => Box::new(future::err(e)),
+                        Err(future::Either::B((e, _))) => {
+                            error!("{}", e);
+                            Box::new(Box::new(
+                                web3::futures::future::err(
+                                    web3::error::Error::from("Timer error sending request.")
+                                )
+                            ))
+                        }
+                    }
+                });
+            return Box::new(timeout_send);
         }
 
         return Box::new(
