@@ -297,58 +297,93 @@ fn background_process<T: DApp<()>>(
                                 .clone();
                             match q.query {
                                 Query::Indices => {
-                                    let indices = state_manager_query
+                                    match state_manager_query
                                         .lock()
                                         .unwrap()
                                         .get_indices(main_concern_fold.clone(), false)
                                         .wait()
-                                        .unwrap();
-                                    let answer = Answer {
-                                        status_code: StatusCode::OK.as_u16(),
-                                        body: serde_json::to_string(&indices).unwrap()
-                                    };
-                                    // send result back from oneshot channel
-                                    q.oneshot.send(
-                                        serde_json::to_string(&answer).unwrap()
-                                    ).unwrap();
+                                    {
+                                        Ok(indices) => {
+                                            let answer = Answer {
+                                                status_code: StatusCode::OK.as_u16(),
+                                                body: serde_json::to_string(&indices).unwrap()
+                                            };
+                                            // send result back from oneshot channel
+                                            q.oneshot.send(
+                                                serde_json::to_string(&answer).unwrap()
+                                            ).unwrap();
+                                        },
+                                        Err(e) => {
+                                            let answer = Answer {
+                                                status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                body: format!("{}", e).into()
+                                            };
+                                            q.oneshot.send(
+                                                serde_json::to_string(&answer).unwrap()
+                                            ).unwrap();
+                                        }
+                                    }
                                 },
                                 Query::Instance(i) => {
-                                    let indices = state_manager_query
+                                    match state_manager_query
                                         .lock()
                                         .unwrap()
                                         .get_indices(main_concern_fold.clone(), false)
                                         .wait()
-                                        .unwrap();
-                                    
-                                    if !indices.contains(&i) {
-                                        let answer = Answer {
-                                            status_code: StatusCode::NOT_FOUND.as_u16(),
-                                            body: "index not instantiated!".into()
-                                        };
-                                        // send result back from oneshot channel
-                                        q.oneshot.send(
-                                            serde_json::to_string(&answer).unwrap()
-                                        ).unwrap();
-                                    } else {
-                                        let instance = state_manager_query
-                                            .lock()
-                                            .unwrap()
-                                            .get_instance(
-                                                main_concern_fold.clone(),
-                                                i
-                                            )
-                                            .wait()
-                                            .unwrap();
-                                        let archive = assets_fold.archive.lock().unwrap();
-                                        let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
-                                        let answer = Answer {
-                                            status_code: StatusCode::OK.as_u16(),
-                                            body: serde_json::to_string(&pretty_instance).unwrap()
-                                        };
-                                        // send result back from oneshot channel
-                                        q.oneshot.send(
-                                            serde_json::to_string(&answer).unwrap()
-                                        ).unwrap();
+                                    {
+                                        Ok(indices) => {                              
+                                            if !indices.contains(&i) {
+                                                let answer = Answer {
+                                                    status_code: StatusCode::NOT_FOUND.as_u16(),
+                                                    body: "index not instantiated!".into()
+                                                };
+                                                // send result back from oneshot channel
+                                                q.oneshot.send(
+                                                    serde_json::to_string(&answer).unwrap()
+                                                ).unwrap();
+                                            } else {
+                                                match state_manager_query
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get_instance(
+                                                        main_concern_fold.clone(),
+                                                        i
+                                                    )
+                                                    .wait() 
+                                                {
+                                                    Ok(instance) => {
+                                                        let archive = assets_fold.archive.lock().unwrap();
+                                                        let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
+                                                        let answer = Answer {
+                                                            status_code: StatusCode::OK.as_u16(),
+                                                            body: serde_json::to_string(&pretty_instance).unwrap()
+                                                        };
+                                                        // send result back from oneshot channel
+                                                        q.oneshot.send(
+                                                            serde_json::to_string(&answer).unwrap()
+                                                        ).unwrap();
+                                                    },
+                                                    Err(e) => {
+                                                        let answer = Answer {
+                                                            status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                            body: format!("{}", e).into()
+                                                        };
+                                                        q.oneshot.send(
+                                                            serde_json::to_string(&answer).unwrap()
+                                                        ).unwrap();
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            let answer = Answer {
+                                                status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                body: format!("{}", e).into()
+                                            };
+                                            q.oneshot.send(
+                                                serde_json::to_string(&answer).unwrap()
+                                            ).unwrap();
+                                        }
                                     }
                                 },
                                 Query::Post(body) => {
@@ -430,6 +465,14 @@ fn background_process<T: DApp<()>>(
                                 })
                                 .map(|_| State {
                                     _handled: HashSet::new(),
+                                })
+                                .or_else(|_| {
+                                    warn!("Tick fails!");
+                                    web3::futures::future::ok::<State, ()>(
+                                        State {
+                                            _handled: HashSet::new(),
+                                        },
+                                    )
                                 });
                             Box::new(returned_state)
                         }
