@@ -52,13 +52,15 @@ use tokio_timer::Timer;
 pub struct GenericTransport {
     http: Option<web3::transports::http::Http>,
     ws: Option<web3::transports::ws::WebSocket>,
+    timeout: u64
 }
 
 impl GenericTransport {
     pub fn new(connstr: &str) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
         let mut generic_transport = GenericTransport {
             http: None,
-            ws: None
+            ws: None,
+            timeout: 10
         };
 
         match url::Url::parse(connstr)?.scheme() {
@@ -94,8 +96,8 @@ impl web3::Transport for GenericTransport {
             return Box::new(s.send(id, request));
         }
         if let Some(s) = &self.ws {
-            let duration = Duration::from_secs(10);
-            
+
+            let duration = Duration::from_secs(self.timeout);
             let timer = Timer::default();
             let timeout = timer.sleep(duration);
 
@@ -107,17 +109,17 @@ impl web3::Transport for GenericTransport {
                             ),
                         Ok(future::Either::B((_, _))) => Box::new(
                                 web3::futures::future::err(
-                                    web3::error::Error::from("Timeout sending request.")
+                                    web3::error::Error::from("timeout sending request.")
                                 )
                             ),
                         Err(future::Either::A((e, _))) => Box::new(future::err(e)),
                         Err(future::Either::B((e, _))) => {
                             error!("{}", e);
-                            Box::new(Box::new(
+                            Box::new(
                                 web3::futures::future::err(
-                                    web3::error::Error::from("Timer error sending request.")
+                                    web3::error::Error::from("timer error sending request.")
                                 )
-                            ))
+                            )
                         }
                     }
                 });

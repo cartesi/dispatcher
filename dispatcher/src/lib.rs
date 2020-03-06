@@ -132,7 +132,9 @@ impl Dispatcher {
             )?;
 
         info!("Creating state manager");
-        let state_manager = StateManager::new(config.clone())?;
+        let state_manager = StateManager::new(config.clone(), web3.clone()).chain_err(
+            || format!("could not create state manager"),
+        )?;
 
         info!("Creating archive");
         let archive = Archive::new()?;
@@ -171,6 +173,7 @@ impl Dispatcher {
         let polling_interval = (&self).config.polling_interval;
         tokio::run(lazy(move || {
             let (query_tx, query_rx) = mpsc::channel(1_024);
+            let (shutdown_tx, shutdown_rx) = web3::futures::sync::oneshot::channel::<()>();
 
             // spawn the background process that handles all the
             // instances and delegates work to other tokio tasks
@@ -179,7 +182,12 @@ impl Dispatcher {
                 assets_run,
                 query_rx,
                 polling_interval
-            ));
+                )
+                .map_err(|_| {
+                    error!("Shutting down dispatcher")
+                    let _ = shutdown_tx.send(());
+                })
+            );
 
             // start listening to port for state queries
             let addr = match std::env::var_os("DOCKER") {
@@ -204,6 +212,7 @@ impl Dispatcher {
                     let tx = query_tx.clone();
                     service_fn(move |req| replier(tx.clone(), req))
                 })
+                .with_graceful_shutdown(shutdown_rx)
                 .map_err(|e| error!("error in socket {}", e))
         }))
     }
@@ -331,7 +340,7 @@ fn background_process<T: DApp<()>>(
                                         .get_indices(main_concern_fold.clone(), false)
                                         .wait()
                                     {
-                                        Ok(indices) => {                              
+                                        Ok(indices) => {
                                             if !indices.contains(&i) {
                                                 let answer = Answer {
                                                     status_code: StatusCode::NOT_FOUND.as_u16(),
@@ -465,21 +474,13 @@ fn background_process<T: DApp<()>>(
                                 })
                                 .map(|_| State {
                                     _handled: HashSet::new(),
-                                })
-                                .or_else(|_| {
-                                    warn!("Tick fails!");
-                                    web3::futures::future::ok::<State, ()>(
-                                        State {
-                                            _handled: HashSet::new(),
-                                        },
-                                    )
                                 });
                             Box::new(returned_state)
                         }
                     }
                 },
             )
-            .map(|_| ()),
+            .map(|_| ())
     );
 }
 

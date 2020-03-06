@@ -38,7 +38,6 @@ extern crate ethabi;
 extern crate ethereum_types;
 extern crate leveldb;
 extern crate serde_json;
-extern crate utils;
 extern crate web3;
 extern crate transport;
 
@@ -54,7 +53,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use utils::EthWeb3;
 use web3::contract::Options;
 use web3::futures;
 use web3::futures::future::err;
@@ -101,14 +99,16 @@ struct ConcernCache {
 }
 
 pub struct StateManager {
-    web3: web3::Web3<GenericTransport>,
-    _eloop: web3::transports::EventLoopHandle, // kept to stay in scope
+    web3: Arc<web3::Web3<GenericTransport>>,
     concern_data: HashMap<Concern, ConcernData>,
     database: Arc<Database<Concern>>,
 }
 
 impl StateManager {
-    pub fn new(config: Configuration) -> Result<StateManager> {
+    pub fn new(
+        config: Configuration,
+        web3: web3::Web3<GenericTransport>,
+    ) -> Result<StateManager> {
         info!("Opening state manager database");
         let mut options = leveldb::options::Options::new();
         // if no database is found we start an empty one (no cache)
@@ -120,16 +120,6 @@ impl StateManager {
                     "no state database (use -i if running for the first time)"
                 )
                 })?;
-
-        info!("Trying to connect to Eth node at {}", &config.url[..]);
-        let (_eloop, transport) = GenericTransport::new(&config.url[..])
-            .chain_err(|| {
-                format!("could not connect to Eth node at url: {}", &config.url)
-            })?;
-
-        info!("Testing Ethereum node's functionality");
-        let web3 = web3::Web3::new(transport);
-        web3.test_connection(&config).wait()?;
 
         info!("Preparing assets for {} concerns", config.concerns.len());
         let mut concern_data = HashMap::new();
@@ -181,8 +171,7 @@ impl StateManager {
 
         Ok(StateManager {
             concern_data: concern_data,
-            web3: web3,
-            _eloop: _eloop,
+            web3: Arc::new(web3),
             database: Arc::new(database),
         })
     }
