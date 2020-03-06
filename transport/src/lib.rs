@@ -56,11 +56,11 @@ pub struct GenericTransport {
 }
 
 impl GenericTransport {
-    pub fn new(connstr: &str) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
+    pub fn new(connstr: &str, timeout: u64) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
         let mut generic_transport = GenericTransport {
             http: None,
             ws: None,
-            timeout: 10
+            timeout: timeout
         };
 
         match url::Url::parse(connstr)?.scheme() {

@@ -116,7 +116,7 @@ impl Dispatcher {
             .chain_err(|| format!("could not load configuration"))?;
 
         info!("Trying to connect to Eth node at {}", &config.url[..]);
-        let (_eloop, transport) = GenericTransport::new(&config.url[..])
+        let (_eloop, transport) = GenericTransport::new(&config.url[..], config.web3_timeout)
             .chain_err(|| {
                 format!("could not connect to Eth node at url: {}", &config.url)
             })?;
@@ -184,7 +184,7 @@ impl Dispatcher {
                 polling_interval
                 )
                 .map_err(|_| {
-                    error!("Shutting down dispatcher")
+                    error!("Shutting down dispatcher");
                     let _ = shutdown_tx.send(());
                 })
             );

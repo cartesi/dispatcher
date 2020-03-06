@@ -204,7 +204,9 @@ struct EnvCLIConfiguration {
     confirmations: Option<usize>,
     /// Interval of polling the blockchain (in seconds)
     #[structopt(long = "polling_interval")]
-    polling_interval: Option<u64>
+    polling_interval: Option<u64>,
+    #[structopt(long = "web3_timeout")]
+    web3_timeout: Option<u64>
 }
 
 /// Structure to parse configuration from file
@@ -220,7 +222,8 @@ struct FileConfiguration {
     services: Vec<Service>,
     query_port: Option<u16>,
     confirmations: Option<usize>,
-    polling_interval: Option<u64>
+    polling_interval: Option<u64>,
+    web3_timeout: Option<u64>
 }
 
 /// Configuration after parsing
@@ -238,6 +241,7 @@ pub struct Configuration {
     pub query_port: u16,
     pub confirmations: usize,
     pub polling_interval: u64,
+    pub web3_timeout: u64,
     pub chain_id: u64
 }
 
@@ -380,8 +384,15 @@ fn combine_config(
             "Need to provide url (config file, command line or env)",
         ))))?;
 
+    // determine web3 timeout (cli -> env -> config)
+    let web3_timeout: u64 = cli_config
+        .web3_timeout
+        .or(env_config.web3_timeout)
+        .or(file_config.web3_timeout)
+        .unwrap_or(10);
+
     info!("Trying to connect to Eth node at {}", &url[..]);
-    let (_eloop, transport) = GenericTransport::new(&url[..])
+    let (_eloop, transport) = GenericTransport::new(&url[..], web3_timeout)
         .chain_err(|| {
             format!("could not connect to Eth node at url: {}", &url)
         })?;
@@ -551,6 +562,7 @@ fn combine_config(
         query_port: query_port,
         confirmations: confirmations,
         polling_interval: polling_interval,
+        web3_timeout: web3_timeout,
         chain_id: chain_id,
     })
 }
