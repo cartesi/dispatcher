@@ -495,12 +495,11 @@ impl StateManager {
                 user_address: concern.user_address,
             };
 
-            sub_instances.push(Box::new(
-                self.get_instance(c, instance.1.as_usize())
-                    .wait()
-                    .unwrap()
-                    .clone(),
-            ));
+            match self.get_instance(c, instance.1.as_usize())
+                .wait() {
+                Ok(s) => sub_instances.push(Box::new(s)),
+                Err(e) => return Box::new(futures::future::err(Error::from(e)))
+            }
         }
 
         let default_status = ServiceStatus {
