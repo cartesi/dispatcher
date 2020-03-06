@@ -324,7 +324,7 @@ fn background_process<T: DApp<()>>(
                                         },
                                         Err(e) => {
                                             let answer = Answer {
-                                                status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
                                                 body: format!("{}", e).into()
                                             };
                                             q.oneshot.send(
@@ -374,7 +374,7 @@ fn background_process<T: DApp<()>>(
                                                     },
                                                     Err(e) => {
                                                         let answer = Answer {
-                                                            status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                            status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
                                                             body: format!("{}", e).into()
                                                         };
                                                         q.oneshot.send(
@@ -386,7 +386,7 @@ fn background_process<T: DApp<()>>(
                                         },
                                         Err(e) => {
                                             let answer = Answer {
-                                                status_code: StatusCode::REQUEST_TIMEOUT.as_u16(),
+                                                status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
                                                 body: format!("{}", e).into()
                                             };
                                             q.oneshot.send(
