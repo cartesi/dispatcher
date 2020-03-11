@@ -334,11 +334,15 @@ fn background_process<T: DApp<()>>(
                                     }
                                 },
                                 Query::Instance(i) => {
-                                    match state_manager_query
+                                        
+                                    let state = state_manager_query
                                         .lock()
-                                        .unwrap()
+                                        .unwrap();
+
+                                    let inactive_indices = state
                                         .get_indices(main_concern_fold.clone(), false)
-                                        .wait()
+                                        .wait();
+                                    match inactive_indices
                                     {
                                         Ok(indices) => {
                                             if !indices.contains(&i) {
@@ -351,9 +355,7 @@ fn background_process<T: DApp<()>>(
                                                     serde_json::to_string(&answer).unwrap()
                                                 ).unwrap();
                                             } else {
-                                                match state_manager_query
-                                                    .lock()
-                                                    .unwrap()
+                                                match state
                                                     .get_instance(
                                                         main_concern_fold.clone(),
                                                         i
