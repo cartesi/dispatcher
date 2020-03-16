@@ -105,10 +105,10 @@ impl web3::Transport for GenericTransport {
                 .then(|res| -> Self::Out {
                     match res {
                         Ok(future::Either::A((v, _))) => Box::new(
-                                web3::futures::future::ok::<Value, web3::error::Error>(v)
+                                future::ok::<Value, web3::error::Error>(v)
                             ),
                         Ok(future::Either::B((_, _))) => Box::new(
-                                web3::futures::future::err(
+                                future::err(
                                     web3::error::Error::from("timeout sending request.")
                                 )
                             ),
@@ -116,7 +116,7 @@ impl web3::Transport for GenericTransport {
                         Err(future::Either::B((e, _))) => {
                             error!("{}", e);
                             Box::new(
-                                web3::futures::future::err(
+                                future::err(
                                     web3::error::Error::from("timer error sending request.")
                                 )
                             )

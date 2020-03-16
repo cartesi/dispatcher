@@ -64,7 +64,7 @@ use transaction::{TransactionManager, TransactionRequest};
 use utils::{print_error, EthWeb3};
 use web3::futures::future::lazy;
 use web3::futures::sync::{mpsc, oneshot};
-use web3::futures::{stream, Future, Stream};
+use web3::futures::{future, stream, Future, Stream};
 use transport::GenericTransport;
 
 pub use dapp::{
@@ -173,7 +173,7 @@ impl Dispatcher {
         let polling_interval = (&self).config.polling_interval;
         tokio::run(lazy(move || {
             let (query_tx, query_rx) = mpsc::channel(1_024);
-            let (shutdown_tx, shutdown_rx) = web3::futures::sync::oneshot::channel::<()>();
+            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
             // spawn the background process that handles all the
             // instances and delegates work to other tokio tasks
@@ -223,7 +223,7 @@ impl Dispatcher {
 #[derive(Debug)]
 struct QueryHandle {
     query: Query,
-    oneshot: web3::futures::sync::oneshot::Sender<String>,
+    oneshot: oneshot::Sender<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -289,200 +289,226 @@ fn background_process<T: DApp<()>>(
     // clone assets to move them inside the closure
     let main_concern_fold = main_concern.clone();
     let assets_fold = assets.clone();
+    let (tx, rx) = mpsc::channel(1_024);
 
-    return Box::new(
-        messages
-            .fold(
-                initial_state,
-                move |_state,
-                      message|
-                      -> Box<dyn Future<Item = State, Error = ()> + Send> {
-                    match message {
-                        // message is a query, answer it appropriately
-                        Message::Asked(q) => {
-                            info!("Received query: {:?}", q.query);
-                            let state_manager_query = assets_fold
-                                .state_manager
-                                .clone();
-                            match q.query {
-                                Query::Indices => {
-                                    match state_manager_query
-                                        .lock()
-                                        .unwrap()
-                                        .get_indices(main_concern_fold.clone(), false)
-                                        .wait()
-                                    {
-                                        Ok(indices) => {
+    let message_fold = messages
+        .fold(
+            initial_state,
+            move |_state,
+                message|
+                -> Box<dyn Future<Item = State, Error = ()> + Send> {
+                match message {
+                    // message is a query, answer it appropriately
+                    Message::Asked(q) => {
+                        info!("Received query: {:?}", q.query);
+                        let state_manager_query = assets_fold
+                            .state_manager
+                            .clone();
+                        match q.query {
+                            Query::Indices => {
+                                match state_manager_query
+                                    .lock()
+                                    .unwrap()
+                                    .get_indices(main_concern_fold.clone(), false)
+                                    .wait()
+                                {
+                                    Ok(indices) => {
+                                        let answer = Answer {
+                                            status_code: StatusCode::OK.as_u16(),
+                                            body: serde_json::to_string(&indices).unwrap()
+                                        };
+                                        // send result back from oneshot channel
+                                        q.oneshot.send(
+                                            serde_json::to_string(&answer).unwrap()
+                                        ).unwrap();
+                                    },
+                                    Err(e) => {
+                                        let answer = Answer {
+                                            status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
+                                            body: format!("{}", e).into()
+                                        };
+                                        q.oneshot.send(
+                                            serde_json::to_string(&answer).unwrap()
+                                        ).unwrap();
+                                    }
+                                }
+                            },
+                            Query::Instance(i) => {
+                                    
+                                let state = state_manager_query
+                                    .lock()
+                                    .unwrap();
+
+                                let inactive_indices = state
+                                    .get_indices(main_concern_fold.clone(), false)
+                                    .wait();
+                                match inactive_indices
+                                {
+                                    Ok(indices) => {
+                                        if !indices.contains(&i) {
                                             let answer = Answer {
-                                                status_code: StatusCode::OK.as_u16(),
-                                                body: serde_json::to_string(&indices).unwrap()
+                                                status_code: StatusCode::NOT_FOUND.as_u16(),
+                                                body: "index not instantiated!".into()
                                             };
                                             // send result back from oneshot channel
                                             q.oneshot.send(
                                                 serde_json::to_string(&answer).unwrap()
                                             ).unwrap();
-                                        },
-                                        Err(e) => {
-                                            let answer = Answer {
-                                                status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                                body: format!("{}", e).into()
-                                            };
-                                            q.oneshot.send(
-                                                serde_json::to_string(&answer).unwrap()
-                                            ).unwrap();
-                                        }
-                                    }
-                                },
-                                Query::Instance(i) => {
-                                        
-                                    let state = state_manager_query
-                                        .lock()
-                                        .unwrap();
-
-                                    let inactive_indices = state
-                                        .get_indices(main_concern_fold.clone(), false)
-                                        .wait();
-                                    match inactive_indices
-                                    {
-                                        Ok(indices) => {
-                                            if !indices.contains(&i) {
-                                                let answer = Answer {
-                                                    status_code: StatusCode::NOT_FOUND.as_u16(),
-                                                    body: "index not instantiated!".into()
-                                                };
-                                                // send result back from oneshot channel
-                                                q.oneshot.send(
-                                                    serde_json::to_string(&answer).unwrap()
-                                                ).unwrap();
-                                            } else {
-                                                match state
-                                                    .get_instance(
-                                                        main_concern_fold.clone(),
-                                                        i
-                                                    )
-                                                    .wait() 
-                                                {
-                                                    Ok(instance) => {
-                                                        let archive = assets_fold.archive.lock().unwrap();
-                                                        let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
-                                                        let answer = Answer {
-                                                            status_code: StatusCode::OK.as_u16(),
-                                                            body: serde_json::to_string(&pretty_instance).unwrap()
-                                                        };
-                                                        // send result back from oneshot channel
-                                                        q.oneshot.send(
-                                                            serde_json::to_string(&answer).unwrap()
-                                                        ).unwrap();
-                                                    },
-                                                    Err(e) => {
-                                                        let answer = Answer {
-                                                            status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                                            body: format!("{}", e).into()
-                                                        };
-                                                        q.oneshot.send(
-                                                            serde_json::to_string(&answer).unwrap()
-                                                        ).unwrap();
-                                                    }
+                                        } else {
+                                            match state
+                                                .get_instance(
+                                                    main_concern_fold.clone(),
+                                                    i
+                                                )
+                                                .wait() 
+                                            {
+                                                Ok(instance) => {
+                                                    let archive = assets_fold.archive.lock().unwrap();
+                                                    let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
+                                                    let answer = Answer {
+                                                        status_code: StatusCode::OK.as_u16(),
+                                                        body: serde_json::to_string(&pretty_instance).unwrap()
+                                                    };
+                                                    // send result back from oneshot channel
+                                                    q.oneshot.send(
+                                                        serde_json::to_string(&answer).unwrap()
+                                                    ).unwrap();
+                                                },
+                                                Err(e) => {
+                                                    let answer = Answer {
+                                                        status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
+                                                        body: format!("{}", e).into()
+                                                    };
+                                                    q.oneshot.send(
+                                                        serde_json::to_string(&answer).unwrap()
+                                                    ).unwrap();
                                                 }
                                             }
-                                        },
-                                        Err(e) => {
-                                            let answer = Answer {
-                                                status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                                body: format!("{}", e).into()
-                                            };
-                                            q.oneshot.send(
-                                                serde_json::to_string(&answer).unwrap()
-                                            ).unwrap();
                                         }
+                                    },
+                                    Err(e) => {
+                                        let answer = Answer {
+                                            status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
+                                            body: format!("{}", e).into()
+                                        };
+                                        q.oneshot.send(
+                                            serde_json::to_string(&answer).unwrap()
+                                        ).unwrap();
                                     }
-                                },
-                                Query::Post(body) => {
-                                    // clone assets to move inside
-                                    let main_concern_index = main_concern_fold.clone();
-                                    let assets_index = assets_fold.clone();
-
-                                    tokio::spawn(
-                                        execute_reaction::<T>(
-                                            main_concern_index,
-                                            body.index,
-                                            Some(body.payload),
-                                            assets_index.clone(),
-                                        )
-                                        .map_err(|e| print_error(&e)),
-                                    );
-                                    let answer = Answer {
-                                        status_code: StatusCode::OK.as_u16(),
-                                        body: "".into()
-                                    };
-                                    // send result back from oneshot channel
-                                    q.oneshot.send(
-                                        serde_json::to_string(&answer).unwrap()
-                                    ).unwrap();
                                 }
-                            };
+                            },
+                            Query::Post(body) => {
+                                // clone assets to move inside
+                                let main_concern_index = main_concern_fold.clone();
+                                let assets_index = assets_fold.clone();
 
-                            // for now we don't keep track of the state
-                            Box::new(web3::futures::future::ok::<State, ()>(
-                                State {
-                                    _handled: HashSet::new(),
-                                },
-                            ))
-                        },
-                        // received a periodic Tick. We need to check
-                        // for new instances and launch tasks for each.
-                        Message::Tick => {
-                            // clone assets to have static lifetime
-                            let state_manager_indices =
-                                assets_fold.state_manager.clone();
+                                tokio::spawn(
+                                    execute_reaction::<T>(
+                                        main_concern_index,
+                                        body.index,
+                                        Some(body.payload),
+                                        assets_index.clone(),
+                                    )
+                                    .map_err(|e| print_error(&e)),
+                                );
+                                let answer = Answer {
+                                    status_code: StatusCode::OK.as_u16(),
+                                    body: "".into()
+                                };
+                                // send result back from oneshot channel
+                                q.oneshot.send(
+                                    serde_json::to_string(&answer).unwrap()
+                                ).unwrap();
+                            }
+                        };
 
-                            trace!(
-                                "Getting indices for {:?}",
-                                main_concern_fold
-                            );
-                            let stream_of_indices = state_manager_indices
-                                .lock()
-                                .unwrap()
-                                .get_indices(main_concern_fold.clone(), true)
-                                .map_err(|e| {
-                                    print_error(&e.chain_err(|| {
-                                        format!("could not get issue indices")
-                                    }));
-                                })
-                                .map(|vector_of_indices| {
-                                    stream::iter_ok(vector_of_indices)
-                                })
-                                .flatten_stream();
+                        // for now we don't keep track of the state
+                        Box::new(future::ok::<State, ()>(
+                            State {
+                                _handled: HashSet::new(),
+                            },
+                        ))
+                    },
+                    // received a periodic Tick. We need to check
+                    // for new instances and launch tasks for each.
+                    Message::Tick => {
+                        // clone assets to have static lifetime
+                        let state_manager_indices =
+                            assets_fold.state_manager.clone();
 
-                            // clone assets to move inside each index
-                            let main_concern_index = main_concern_fold.clone();
-                            let assets_index = assets_fold.clone();
+                        trace!(
+                            "Getting indices for {:?}",
+                            main_concern_fold
+                        );
+                        let stream_of_indices = state_manager_indices
+                            .lock()
+                            .unwrap()
+                            .get_indices(main_concern_fold.clone(), true)
+                            .map_err(|e| {
+                                print_error(&e.chain_err(|| {
+                                    format!("could not get issue indices")
+                                }));
+                            })
+                            .map(|vector_of_indices| {
+                                stream::iter_ok(vector_of_indices)
+                            })
+                            .flatten_stream();
 
-                            let returned_state = stream_of_indices
-                                .inspect(|index| {
-                                    trace!("Processing index {}", index)
-                                })
-                                .for_each(move |index| {
-                                    tokio::spawn(
-                                        execute_reaction::<T>(
-                                            main_concern_index,
-                                            index,
-                                            None,
-                                            assets_index.clone(),
-                                        )
-                                        .map_err(|e| print_error(&e)),
-                                    );
-                                    Ok(())
-                                })
-                                .map(|_| State {
-                                    _handled: HashSet::new(),
-                                });
-                            Box::new(returned_state)
-                        }
+                        // clone assets to move inside each index
+                        let main_concern_index = main_concern_fold.clone();
+                        let assets_index = assets_fold.clone();
+
+                        let tx_fold = tx.clone();
+                        let returned_state = stream_of_indices
+                            .inspect(|index| {
+                                trace!("Processing index {}", index)
+                            })
+                            .for_each(move |index| {
+                                let tx_fold_clone = tx_fold.clone();
+                                tokio::spawn(
+                                    execute_reaction::<T>(
+                                        main_concern_index,
+                                        index,
+                                        None,
+                                        assets_index.clone(),
+                                    )
+                                    .map_err(|e| {
+                                        print_error(&e);
+                                        tx_fold_clone.send(()).wait();
+                                    })
+                                );
+                                Ok(())
+                            })
+                            .map(|_| State {
+                                _handled: HashSet::new(),
+                            });
+                        Box::new(returned_state)
                     }
-                },
-            )
-            .map(|_| ())
+                }
+            },
+        )
+        .map(|_| ());
+        
+    let rx_collect = rx
+        .take(1)
+        .collect()
+        .map(|_| {
+            trace!("rx_collect receives from tx_fold");
+            ()
+        });
+
+    return Box::new(
+        message_fold.select2(rx_collect)
+            .then(|res| -> Box<dyn Future<Item = (), Error = ()> + Send> {
+                match res {
+                    Ok(future::Either::A((_, _))) => Box::new(
+                            future::ok::<(), ()>(())
+                        ),
+                    Ok(future::Either::B((_, _))) => Box::new(future::err(())),
+                    Err(future::Either::A((_, _))) => Box::new(future::err(())),
+                    Err(future::Either::B((_, _))) => Box::new(future::err(()))
+                }
+            })
     );
 }
 
@@ -523,12 +549,12 @@ fn execute_reaction<T: DApp<()>>(
                             ErrorKind::ResponseInvalidError(service, key, _m) => {
                                 trace!("handling ResponseInvalidError for service: {}, and key: {}", service, key);
                                 archive.remove_response(key.clone());
-                                return Box::new(web3::futures::future::ok::<(), _>(()));
+                                return Box::new(future::ok::<(), _>(()));
                             },
                             ErrorKind::ResponseNeedsDummy(service, key, _m) => {
                                 trace!("handling ResponseNeedsDummy for service: {}, and key: {}", service, key);
                                 archive.insert_response(key.clone(), Ok(Vec::new()));
-                                return Box::new(web3::futures::future::ok::<(), _>(()));
+                                return Box::new(future::ok::<(), _>(()));
                             },
                             ErrorKind::ServiceNeedsRetry(service, key, method, request, contract, status, progress, description) => {
                                 trace!("handling ServiceNeedsRetry, service: {}, key: {}, method: {}, contract: {}, status: {}, progress: {}, description: {}", service, key, method, contract, status, progress, description);
@@ -545,7 +571,7 @@ fn execute_reaction<T: DApp<()>>(
 
                             },
                             _ => {
-                                return Box::new(web3::futures::future::err(e));
+                                return Box::new(future::err(e));
                             }
                         }
                     }
@@ -568,7 +594,7 @@ fn execute_reaction<T: DApp<()>>(
                         )
                     }
                     Reaction::Idle => {
-                        Box::new(web3::futures::future::ok::<(), _>(()))
+                        Box::new(future::ok::<(), _>(()))
                     }
                     Reaction::Terminate => {
                         std::process::exit(0)
@@ -695,23 +721,23 @@ fn send_grpc_request(
         match response {
             Ok(resp) => {
                 archive.insert_response(key.clone(), Ok(resp));
-                return Box::new(web3::futures::future::ok::<(), _>(()));
+                return Box::new(future::ok::<(), _>(()));
             }
             Err(e) => {
                 match e {
                     grpc::Error::GrpcMessage(msg) => {
                         archive.insert_response(key.clone(), Err(msg.grpc_message.clone()));
-                        return Box::new(web3::futures::future::ok::<(), _>(()));
+                        return Box::new(future::ok::<(), _>(()));
                     }
                     _ => {
-                        return Box::new(web3::futures::future::err(e.into()));
+                        return Box::new(future::err(e.into()));
                     }
                 }
             }
         }
     }
     return Box::new(
-        web3::futures::future::err(
+        future::err(
             Error::from(format!("Fail to get grpc client of {} service", service))
         )
     );
