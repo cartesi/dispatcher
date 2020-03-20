@@ -411,6 +411,7 @@ fn combine_config(
             )))
         })
         .wait()?;
+    info!("Connected to Ethereum node with network id {}", &network_id);
         
     let url_clone = url.clone();
     let chain_id: u64 = web3
@@ -568,17 +569,17 @@ fn combine_config(
 }
 
 fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
-    let mut file = File::open(abi)?;
+    let mut file = File::open(&abi)?;
     let mut s = String::new();
     file.read_to_string(&mut s)?;
     let v: Value = serde_json::from_str(&s[..])
         .chain_err(|| format!("could not read truffle json file"))?;
 
     // retrieve the contract address
-    let contract_address_str = match v["networks"][network_id]["address"].as_str() {
+    let contract_address_str = match v["networks"][&network_id]["address"].as_str() {
         Some(address_str) => address_str.split_at(2).1,
-        None => return Err(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Fail to parse contract address",
+        None => return Err(Error::from(ErrorKind::InvalidConfig(format!(
+            "Fail to parse contract address from file {} with network id {}", abi.display(), &network_id
         ))))
     };
     let contract_address: Address = contract_address_str.parse()?;
