@@ -52,7 +52,7 @@ use tokio_timer::Timer;
 pub struct GenericTransport {
     http: Option<web3::transports::http::Http>,
     ws: Option<web3::transports::ws::WebSocket>,
-    timeout: u64
+    timeout: u64,
 }
 
 impl GenericTransport {
@@ -60,7 +60,7 @@ impl GenericTransport {
         let mut generic_transport = GenericTransport {
             http: None,
             ws: None,
-            timeout: timeout
+            timeout: timeout,
         };
 
         match url::Url::parse(connstr)?.scheme() {

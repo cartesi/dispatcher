@@ -33,7 +33,7 @@ use super::state::ServiceStatus;
 /// The total archive, for each machine session
 pub struct Archive {
     response_cache: HashMap<String, std::result::Result<Vec<u8>, String>>,
-    service_status: HashMap<String, ServiceStatus>
+    service_status: HashMap<String, ServiceStatus>,
 }
 
 impl Archive {

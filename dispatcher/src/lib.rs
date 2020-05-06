@@ -317,7 +317,7 @@ fn background_process<T: DApp<()>>(
                                     Ok(indices) => {
                                         let answer = Answer {
                                             status_code: StatusCode::OK.as_u16(),
-                                            body: serde_json::to_string(&indices).unwrap()
+                                            body: serde_json::to_string(&indices).unwrap(),
                                         };
                                         // send result back from oneshot channel
                                         q.oneshot.send(
@@ -327,7 +327,7 @@ fn background_process<T: DApp<()>>(
                                     Err(e) => {
                                         let answer = Answer {
                                             status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                            body: format!("{}", e).into()
+                                            body: format!("{}", e).into(),
                                         };
                                         q.oneshot.send(
                                             serde_json::to_string(&answer).unwrap()
@@ -349,7 +349,7 @@ fn background_process<T: DApp<()>>(
                                         if !indices.contains(&i) {
                                             let answer = Answer {
                                                 status_code: StatusCode::NOT_FOUND.as_u16(),
-                                                body: "index not instantiated!".into()
+                                                body: "index not instantiated!".into(),
                                             };
                                             // send result back from oneshot channel
                                             q.oneshot.send(
@@ -368,7 +368,7 @@ fn background_process<T: DApp<()>>(
                                                     let pretty_instance = T::get_pretty_instance(&instance, &archive, &()).unwrap();
                                                     let answer = Answer {
                                                         status_code: StatusCode::OK.as_u16(),
-                                                        body: serde_json::to_string(&pretty_instance).unwrap()
+                                                        body: serde_json::to_string(&pretty_instance).unwrap(),
                                                     };
                                                     // send result back from oneshot channel
                                                     q.oneshot.send(
@@ -378,7 +378,7 @@ fn background_process<T: DApp<()>>(
                                                 Err(e) => {
                                                     let answer = Answer {
                                                         status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                                        body: format!("{}", e).into()
+                                                        body: format!("{}", e).into(),
                                                     };
                                                     q.oneshot.send(
                                                         serde_json::to_string(&answer).unwrap()
@@ -390,7 +390,7 @@ fn background_process<T: DApp<()>>(
                                     Err(e) => {
                                         let answer = Answer {
                                             status_code: StatusCode::GATEWAY_TIMEOUT.as_u16(),
-                                            body: format!("{}", e).into()
+                                            body: format!("{}", e).into(),
                                         };
                                         q.oneshot.send(
                                             serde_json::to_string(&answer).unwrap()
@@ -414,7 +414,7 @@ fn background_process<T: DApp<()>>(
                                 );
                                 let answer = Answer {
                                     status_code: StatusCode::OK.as_u16(),
-                                    body: "".into()
+                                    body: "".into(),
                                 };
                                 // send result back from oneshot channel
                                 q.oneshot.send(
@@ -565,7 +565,7 @@ fn execute_reaction<T: DApp<()>>(
                                     service_method: method.clone(),
                                     status: *status,
                                     progress: *progress,
-                                    description: description.clone()
+                                    description: description.clone(),
                                 };
                                 archive.insert_service(contract.clone(), service_status);
                                 return send_grpc_request(&mut archive, assets.clients.clone(), request.to_vec(), method.into(), service.into(), key.into());
@@ -581,7 +581,7 @@ fn execute_reaction<T: DApp<()>>(
                     "Reaction to instance {} of {} is: {:?}",
                     index,
                     main_concern.contract_address,
-                    reaction
+                    reaction,
                 );
 
                 // act according to dapp reaction
