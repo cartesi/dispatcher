@@ -70,6 +70,16 @@ pub enum Strategy {
     Simplest,
 }
 
+/// There are three types of concern, used to find the corresponding abi
+/// DLib will just use the concern in TransactionRequest
+/// Token will use token_concern
+#[derive(Clone, Debug)]
+pub enum ConcernType {
+    Token,
+    //StakingToken,
+    DLib,
+}
+
 /// The transaction manager expects these requests to be submitted to the
 /// blockchain. Note that the data should have already been encoded,
 /// since the trasaction manager does not understand ABI's.
@@ -81,6 +91,7 @@ pub struct TransactionRequest {
     pub data: Vec<Token>,
     pub gas: Option<U256>,
     pub strategy: Strategy,
+    pub concern_type: ConcernType,
 }
 
 /// Every concern that the Transaction Manager acts uppon should be
@@ -186,7 +197,11 @@ impl TransactionManager {
         // async_block needs owned values, so let us clone some stuff
         let web3 = Arc::clone(&self.web3);
         let request = request.clone();
-        let concern_data = match self.concern_data.get(&request.concern) {
+        let request_concern = match request.concern_type {
+            ConcernType::DLib => request.concern.clone(),
+            ConcernType::Token => self.config.token_concern.clone(),
+        };
+        let concern_data = match self.concern_data.get(&request_concern) {
             Some(k) => k,
             None => {
                 return Box::new(err(Error::from(
@@ -286,7 +301,7 @@ impl TransactionManager {
 
                     trace!("Signing transaction");
                     let signed_tx = Transaction {
-                        action: Action::Call(request.concern.contract_address),
+                        action: Action::Call(request_concern.contract_address),
                         nonce: nonce,
                         // do something better then double
                         gas_price: U256::from(2)
