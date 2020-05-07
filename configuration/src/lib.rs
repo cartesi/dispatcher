@@ -187,12 +187,6 @@ struct EnvCLIConfiguration {
     /// Main concern's contract's abi
     #[structopt(long = "concern_abi")]
     main_concern_abi: Option<String>,
-    /// Token concern's user address
-    #[structopt(long = "token_concern_user")]
-    token_concern_user: Option<String>,
-    /// Token concern's contract's abi
-    #[structopt(long = "token_concern_abi")]
-    token_concern_abi: Option<String>,
     /// Working path
     #[structopt(long = "working_path")]
     working_path: Option<String>,
@@ -223,7 +217,7 @@ struct FileConfiguration {
     max_delay: Option<u64>,
     warn_delay: Option<u64>,
     main_concern: Option<FullConcern>,
-    token_concern: Option<FullConcern>,
+    contracts: HashMap<String, FullConcern>,
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
     services: Vec<Service>,
@@ -241,7 +235,7 @@ pub struct Configuration {
     pub max_delay: Duration,
     pub warn_delay: Duration,
     pub main_concern: Concern,
-    pub token_concern: Concern,
+    pub contracts: HashMap<String, Concern>,
     pub concerns: Vec<Concern>,
     pub working_path: PathBuf,
     pub abis: HashMap<Concern, ConcernAbi>,
@@ -276,7 +270,6 @@ impl fmt::Display for Configuration {
              Max delay: {}, \
              Warning delay: {}, \
              Main concern: {}, \
-             Token concern: {}, \
              Number of concerns: {}, \
              Working path: {:?}, \
              Number of services: {}, \
@@ -287,7 +280,6 @@ impl fmt::Display for Configuration {
             self.max_delay,
             self.warn_delay,
             self.main_concern,
-            self.token_concern,
             self.concerns.len(),
             self.working_path,
             self.services.len(),
@@ -505,43 +497,23 @@ fn combine_config(
         .unwrap_or(6);
 
     info!("determine cli concern");
-    let cli_main_full_concern = validate_concern(
+    let cli_main_concern = validate_concern(
         cli_config.main_concern_user,
         cli_config.main_concern_abi,
     )?;
 
     info!("determine env concern");
-    let env_main_full_concern = validate_concern(
+    let env_main_concern = validate_concern(
         env_config.main_concern_user,
         env_config.main_concern_abi,
     )?;
 
     // determine main concern (cli -> env -> config)
-    let main_full_concern = cli_main_full_concern
-        .or(env_main_full_concern)
+    let main_concern = cli_main_concern
+        .or(env_main_concern)
         .or(file_config.main_concern)
         .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
             "Need to provide main concern (config file, command line or env)",
-        ))))?;
-
-    info!("determine cli token concern");
-    let cli_token_full_concern = validate_concern(
-        cli_config.token_concern_user,
-        cli_config.token_concern_abi,
-    )?;
-
-    info!("determine env token concern");
-    let env_token_full_concern = validate_concern(
-        env_config.token_concern_user,
-        env_config.token_concern_abi,
-    )?;
-
-    // determine token concern (cli -> env -> config)
-    let token_full_concern = cli_token_full_concern
-        .or(env_token_full_concern)
-        .or(file_config.token_concern)
-        .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-            "Need to provide token concern (config file, command line or env)",
         ))))?;
 
     let full_concerns = file_config.concerns;
@@ -566,41 +538,50 @@ fn combine_config(
         concerns.push(concern);
     }
 
-    let contract_address = get_contract_address(main_full_concern.abi.clone(), network_id.clone())?;
+    let mut contracts: HashMap<String, Concern> = HashMap::new();
+    let contract_full_concerns = file_config.contracts;
+    // insert all contract concerns into concerns and abis
+    for (name, full_concern) in contract_full_concerns.iter() {
+        let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
 
-    let mut main_concern: Concern = main_full_concern.clone().into();
-    main_concern.contract_address = contract_address;
+        let mut concern: Concern = full_concern.clone().into();
+        concern.contract_address = contract_address;
+
+        // store concern data in hash table
+        abis.insert(
+            concern.clone(),
+            ConcernAbi {
+                abi: full_concern.abi.clone(),
+            },
+        );
+        contracts.insert(
+            name.clone(),
+            concern.clone(),
+        );
+        concerns.push(concern);
+    }
+
+    let contract_address = get_contract_address(main_concern.abi.clone(), network_id.clone())?;
+
+    let mut concern: Concern = main_concern.clone().into();
+    concern.contract_address = contract_address;
 
     // insert main full concern in concerns and abis
     abis.insert(
-        main_concern.clone(),
+        concern.clone(),
         ConcernAbi {
-            abi: main_full_concern.abi.clone(),
+            abi: main_concern.abi.clone(),
         },
     );
-    concerns.push(main_concern.clone());
-
-    let contract_address = get_contract_address(token_full_concern.abi.clone(), network_id.clone())?;
-
-    let mut token_concern: Concern = token_full_concern.clone().into();
-    token_concern.contract_address = contract_address;
-
-    // insert main full concern in concerns and abis
-    abis.insert(
-        token_concern.clone(),
-        ConcernAbi {
-            abi: token_full_concern.abi.clone(),
-        },
-    );
-    concerns.push(token_concern.clone());
+    concerns.push(concern.clone());
 
     Ok(Configuration {
         url: url,
         testing: testing,
         max_delay: Duration::seconds(max_delay as i64),
         warn_delay: Duration::seconds(warn_delay as i64),
-        main_concern: main_concern,
-        token_concern: token_concern,
+        main_concern: concern,
+        contracts: contracts,
         concerns: concerns,
         working_path: working_path,
         abis: abis,
