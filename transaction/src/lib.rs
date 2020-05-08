@@ -189,7 +189,16 @@ impl TransactionManager {
         let request_clone = request.clone();
         let request_concern = match request_clone.contract_name {
             None => request_clone.concern.clone(),
-            Some(s) => self.config.contracts.get(&s).unwrap().clone(),
+            Some(s) => match self.config.contracts.get(&s) {
+                Some(k) => k.clone(),
+                None => {
+                    return Box::new(err(Error::from(
+                        ErrorKind::InvalidTransactionRequest(String::from(
+                            "Contract requested not found",
+                        )),
+                    )));
+                }
+            }
         };
         let concern_data = match self.concern_data.get(&request_concern) {
             Some(k) => k,
