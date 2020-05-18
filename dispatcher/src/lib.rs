@@ -70,7 +70,8 @@ use transport::GenericTransport;
 pub use dapp::{
     AddressArray, AddressArray3, AddressField, Archive, BoolArray, BoolField,
     Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction, String32Field,
-    U256Array, U256Array3, U256Array4, U256Array5, U256Array6, U256Array7, U256Array9, U256Array10,
+    U256Array, U256Array2, U256Array3, U256Array4, U256Array5, U256Array6, U256Array7, U256Array8, U256Array9, U256Array10,
+    U256Array11, U256Array12, U256Array13, U256Array14, U256Array15, U256Array16, U256Array17, U256Array18, U256Array19, U256Array20,
 
     U256Field,
 };
@@ -335,7 +336,6 @@ fn background_process<T: DApp<()>>(
                                 }
                             },
                             Query::Instance(i) => {
-                                    
                                 let state = state_manager_query
                                     .lock()
                                     .unwrap();
@@ -361,7 +361,7 @@ fn background_process<T: DApp<()>>(
                                                     main_concern_fold.clone(),
                                                     i
                                                 )
-                                                .wait() 
+                                                .wait()
                                             {
                                                 Ok(instance) => {
                                                     let archive = assets_fold.archive.lock().unwrap();
@@ -489,7 +489,7 @@ fn background_process<T: DApp<()>>(
             },
         )
         .map(|_| ());
-        
+
     let rx_collect = rx
         .take(1)
         .collect()
@@ -559,7 +559,7 @@ fn execute_reaction<T: DApp<()>>(
                             },
                             ErrorKind::ServiceNeedsRetry(service, key, method, request, contract, status, progress, description) => {
                                 trace!("handling ServiceNeedsRetry, service: {}, key: {}, method: {}, contract: {}, status: {}, progress: {}, description: {}", service, key, method, contract, status, progress, description);
-                                    
+
                                 let service_status = state::ServiceStatus {
                                     service_name: service.clone(),
                                     service_method: method.clone(),
