@@ -217,7 +217,7 @@ struct FileConfiguration {
     max_delay: Option<u64>,
     warn_delay: Option<u64>,
     main_concern: Option<FullConcern>,
-    contracts: HashMap<String, FullConcern>,
+    contracts: Option<HashMap<String, FullConcern>>,
     concerns: Vec<FullConcern>,
     working_path: Option<String>,
     services: Vec<Service>,
@@ -539,26 +539,27 @@ fn combine_config(
     }
 
     let mut contracts: HashMap<String, Concern> = HashMap::new();
-    let contract_full_concerns = file_config.contracts;
-    // insert all contract concerns into concerns and abis
-    for (name, full_concern) in contract_full_concerns.iter() {
-        let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
+    if let Some(contract_full_concerns) = file_config.contracts {
+        // insert all contract concerns into concerns and abis
+        for (name, full_concern) in contract_full_concerns.iter() {
+            let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
 
-        let mut concern: Concern = full_concern.clone().into();
-        concern.contract_address = contract_address;
+            let mut concern: Concern = full_concern.clone().into();
+            concern.contract_address = contract_address;
 
-        // store concern data in hash table
-        abis.insert(
-            concern.clone(),
-            ConcernAbi {
-                abi: full_concern.abi.clone(),
-            },
-        );
-        contracts.insert(
-            name.clone(),
-            concern.clone(),
-        );
-        concerns.push(concern);
+            // store concern data in hash table
+            abis.insert(
+                concern.clone(),
+                ConcernAbi {
+                    abi: full_concern.abi.clone(),
+                },
+            );
+            contracts.insert(
+                name.clone(),
+                concern.clone(),
+            );
+            concerns.push(concern);
+        }
     }
 
     let contract_address = get_contract_address(main_concern.abi.clone(), network_id.clone())?;
