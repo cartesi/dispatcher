@@ -91,7 +91,7 @@ impl GenericTransport {
 
 impl web3::Transport for GenericTransport {
     type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send + 'static>;
-    fn send(&self, id: web3::RequestId, request: jsonrpc_core::Call) -> Self::Out {
+    fn send(&self, id: web3::RequestId, request: jsonrpc_core::types::request::Call) -> Self::Out {
         if let Some(s) = &self.http {
             return Box::new(s.send(id, request));
         }
@@ -109,7 +109,7 @@ impl web3::Transport for GenericTransport {
                             ),
                         Ok(future::Either::B((_, _))) => Box::new(
                                 future::err(
-                                    web3::error::Error::from("timeout sending request.")
+                                    web3::error::Error::Transport("timeout sending request.".to_string())
                                 )
                             ),
                         Err(future::Either::A((e, _))) => Box::new(future::err(e)),
@@ -117,7 +117,7 @@ impl web3::Transport for GenericTransport {
                             error!("{}", e);
                             Box::new(
                                 future::err(
-                                    web3::error::Error::from("timer error sending request.")
+                                    web3::error::Error::Transport("timer error sending request.".to_string())
                                 )
                             )
                         }
@@ -128,11 +128,11 @@ impl web3::Transport for GenericTransport {
 
         return Box::new(
             web3::futures::future::err(
-                web3::error::Error::from("Invalid transport type.")
+                web3::error::Error::Transport("Invalid transport type.".to_string())
             )
         );
     }
-    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::Call) {
+    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::types::request::Call) {
         if let Some(s) = &self.http {
             return s.prepare(method, params);
         }
@@ -140,6 +140,8 @@ impl web3::Transport for GenericTransport {
             return s.prepare(method, params);
         }
         
-        return (std::default::Default::default(), jsonrpc_core::Call::Invalid(jsonrpc_core::Id::Num(999)));
+        return (std::default::Default::default(),
+            jsonrpc_core::types::request::Call::Invalid{
+                id: jsonrpc_core::types::id::Id::Null});
     }
 }
