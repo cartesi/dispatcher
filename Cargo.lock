@@ -3729,7 +3729,7 @@ dependencies = [
  "error 0.1.0",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
- "web3 0.6.0 (git+https://github.com/cartesi/rust-web3?branch=v0.6.0-implement-chain-id)",
+ "web3 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
