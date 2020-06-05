@@ -130,9 +130,10 @@ impl db_key::Key for Concern {
 impl Concern {
     /// A bytes representation of a concern
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut result: [u8; 40] = [0; 40];
-        self.contract_address.copy_to(&mut result[0..20]);
-        self.user_address.copy_to(&mut result[20..40]);
+        let result = [
+                self.contract_address.as_ref(),
+                self.user_address.as_ref()]
+            .concat();
         return Vec::from(&result[..]);
     }
 }

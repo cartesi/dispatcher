@@ -40,12 +40,11 @@ extern crate jsonrpc_core;
 extern crate tokio_timer;
 
 use error::*;
-use serde_json::Value;
+use jsonrpc_core::Value;
 use web3::futures::future;
 use web3::futures::Future;
 use std::time::Duration;
 use tokio_timer::Timer;
-
 
 /// Generic transport
 #[derive(Debug, Clone)]
@@ -91,7 +90,7 @@ impl GenericTransport {
 
 impl web3::Transport for GenericTransport {
     type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send + 'static>;
-    fn send(&self, id: web3::RequestId, request: jsonrpc_core::types::request::Call) -> Self::Out {
+    fn send(&self, id: web3::RequestId, request: jsonrpc_core::Call) -> Self::Out {
         if let Some(s) = &self.http {
             return Box::new(s.send(id, request));
         }
@@ -132,7 +131,7 @@ impl web3::Transport for GenericTransport {
             )
         );
     }
-    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::types::request::Call) {
+    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::Call) {
         if let Some(s) = &self.http {
             return s.prepare(method, params);
         }
@@ -141,7 +140,7 @@ impl web3::Transport for GenericTransport {
         }
         
         return (std::default::Default::default(),
-            jsonrpc_core::types::request::Call::Invalid{
-                id: jsonrpc_core::types::id::Id::Null});
+            jsonrpc_core::Call::Invalid{
+                id: jsonrpc_core::Id::Null});
     }
 }
