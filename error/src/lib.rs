@@ -46,7 +46,6 @@ error_chain! {
         Io(::std::io::Error) #[cfg(unix)];
         Parsing(serde_yaml::Error);
         Env(envy::Error);
-        EthKey(ethkey::Error);
         HexParse(rustc_hex::FromHexError);
         //EthAbi(ethabi::Error);
         JsonParse(serde_json::Error);
@@ -59,7 +58,6 @@ error_chain! {
     }
     links {
         //Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
-        Web3(web3::Error, web3::error::ErrorKind) #[cfg(unix)];
         EthAbiLink(ethabi::Error, ethabi::ErrorKind) #[cfg(unix)];
     }
     errors {
