@@ -145,64 +145,22 @@ pub trait DApp<T> {
 pub enum FieldType {
     #[serde(rename = "address")]
     AddressType,
-    #[serde(rename = "address[3]")]
-    AddressArray3Type,
     #[serde(rename = "address[]")]
     AddressArrayType,
     #[serde(rename = "uint256")]
     U256Type,
+    #[serde(rename = "uint256[]")]
+    U256ArrayType,
     #[serde(rename = "uint8")]
     U8Type,
     #[serde(rename = "bytes32")]
     Bytes32Type,
-    #[serde(rename = "uint256[2]")]
-    U256Array2Type,
-    #[serde(rename = "uint256[3]")]
-    U256Array3Type,
-    #[serde(rename = "uint256[4]")]
-    U256Array4Type,
-    #[serde(rename = "uint256[5]")]
-    U256Array5Type,
-    #[serde(rename = "uint256[6]")]
-    U256Array6Type,
-    #[serde(rename = "uint256[7]")]
-    U256Array7Type,
-    #[serde(rename = "uint256[8]")]
-    U256Array8Type,
-    #[serde(rename = "uint256[9]")]
-    U256Array9Type,
-    #[serde(rename = "uint256[10]")]
-    U256Array10Type,
-    #[serde(rename = "uint256[11]")]
-    U256Array11Type,
-    #[serde(rename = "uint256[12]")]
-    U256Array12Type,
-    #[serde(rename = "uint256[13]")]
-    U256Array13Type,
-    #[serde(rename = "uint256[14]")]
-    U256Array14Type,
-    #[serde(rename = "uint256[15]")]
-    U256Array15Type,
-    #[serde(rename = "uint256[16]")]
-    U256Array16Type,
-    #[serde(rename = "uint256[17]")]
-    U256Array17Type,
-    #[serde(rename = "uint256[18]")]
-    U256Array18Type,
-    #[serde(rename = "uint256[19]")]
-    U256Array19Type,
-    #[serde(rename = "uint256[20]")]
-    U256Array20Type,
-    #[serde(rename = "uint256[]")]
-    U256ArrayType,
+    #[serde(rename = "bytes32[]")]
+    Bytes32ArrayType,
     #[serde(rename = "bool")]
     BoolType,
     #[serde(rename = "bool[]")]
     BoolArrayType,
-    #[serde(rename = "bytes32[]")]
-    Bytes32ArrayType,
-    #[serde(rename = "bytes32[3]")]
-    Bytes32Array3Type,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -222,14 +180,6 @@ pub struct AddressArray {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AddressArray3 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [Address; 3],
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct U256Field {
     pub name: String,
     #[serde(rename = "type")]
@@ -246,158 +196,6 @@ pub struct U256Array {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct U256Array2 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 2],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array3 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 3],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array4 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 4],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array5 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 5],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array6 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 6],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array7 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 7],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array8 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 8],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array9 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 9],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array10 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 10],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array11 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 11],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array12 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 12],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array13 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 13],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array14 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 14],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array15 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 15],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array16 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 16],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array17 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 17],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array18 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 18],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array19 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 19],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct U256Array20 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [U256; 20],
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct Bytes32Field {
     pub name: String,
     #[serde(rename = "type")]
@@ -411,14 +209,6 @@ pub struct Bytes32Array {
     #[serde(rename = "type")]
     pub ty: FieldType,
     pub value: Vec<H256>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Bytes32Array3 {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: [H256; 3],
 }
 
 #[derive(Serialize, Deserialize)]

@@ -68,12 +68,9 @@ use web3::futures::{future, stream, Future, Stream};
 use transport::GenericTransport;
 
 pub use dapp::{
-    AddressArray, AddressArray3, AddressField, Archive, BoolArray, BoolField,
-    Bytes32Array, Bytes32Array3, Bytes32Field, DApp, FieldType, Reaction, String32Field,
-    U256Array, U256Array2, U256Array3, U256Array4, U256Array5, U256Array6, U256Array7, U256Array8, U256Array9, U256Array10,
-    U256Array11, U256Array12, U256Array13, U256Array14, U256Array15, U256Array16, U256Array17, U256Array18, U256Array19, U256Array20,
-
-    U256Field,
+    AddressArray, AddressField, Archive, BoolArray, BoolField,
+    Bytes32Array, Bytes32Field, DApp, FieldType, Reaction, String32Field,
+    U256Array, U256Field,
 };
 
 /// Responsible for querying the state of each concern, get a reaction
