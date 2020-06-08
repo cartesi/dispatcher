@@ -31,7 +31,7 @@
 extern crate error_chain;
 extern crate envy;
 extern crate ethabi;
-extern crate ethkey;
+extern crate parity_crypto;
 extern crate grpc;
 extern crate hyper;
 extern crate rustc_hex;
@@ -56,6 +56,7 @@ error_chain! {
         Grpc(grpc::Error);
         Hyper(hyper::Error);
         Url(url::ParseError);
+        ParityCrypto(parity_crypto::publickey::Error);
     }
     links {
         //Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
@@ -82,6 +83,10 @@ error_chain! {
                         max_delay)
         }
         InvalidTransactionRequest(details: String) {
+            description("request of transaction invalid")
+                display("request of transaction invalid: {}", details)
+        }
+        TransactionError(details: String) {
             description("request of transaction invalid")
                 display("request of transaction invalid: {}", details)
         }

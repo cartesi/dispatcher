@@ -38,20 +38,20 @@ extern crate common_types;
 extern crate ethabi;
 extern crate ethereum_types;
 extern crate ethjson;
-extern crate ethkey;
 extern crate hex;
 extern crate keccak_hash;
 extern crate rlp;
 extern crate serde_json;
 extern crate web3;
 extern crate transport;
+extern crate parity_crypto;
 
 use common_types::transaction::{Action, Transaction};
 use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
-use ethkey::KeyPair;
+use parity_crypto::publickey::KeyPair;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -226,12 +226,12 @@ impl TransactionManager {
             web3.clone()
                 .eth()
                 .transaction_count(
-                    web3::types::H160::from_slice(&key.address().to_vec()[..]),
+                    key.address().clone(),
                     Some(web3::types::BlockNumber::Pending),
                 )
-                .map_err(|e| {
+                .map_err(|_e| {
                     error::Error::from(
-                        e.chain_err(|| "could not retrieve nonce"),
+                        format!("could not retrieve nonce"),
                     )
                 })
                 .and_then(move |nonce| {
@@ -239,9 +239,9 @@ impl TransactionManager {
                     web3_gas_price
                         .eth()
                         .gas_price()
-                        .map_err(|e| {
+                        .map_err(|_e| {
                             error::Error::from(
-                                e.chain_err(|| "could not retrieve gas price"),
+                                format!("could not retrieve gas price"),
                             )
                         })
                         .map(move |gas_price| (nonce.clone(), gas_price))
@@ -281,13 +281,13 @@ impl TransactionManager {
                         format!("{:?}", request_gas_usage.clone());
 
                     get_gas(web3_gas_usage, call_request, request_gas_usage)
-                    .map_err(|e| {
-                        error::Error::from(e.chain_err(move || {
+                    .map_err(move |_e| {
+                        error::Error::from(
                             format!(
-                            "could not estimate gas usage for call {:?}",
-                            request_string
+                                "could not estimate gas usage for call {:?}",
+                                request_string
+                            )
                         )
-                        }))
                     })
                     .map(move |total_gas| {
                         (nonce, gas_price, total_gas, raw_data)

@@ -11,7 +11,7 @@ serde_yaml = "0.8"
 error-chain = "0.12.0"
 web3 = "0.11.0"
 time = "0.1"
-ethkey = { git = "https://github.com/openethereum/openethereum", tag = "v3.0.0" }
+parity-crypto = { version = "0.6.1", features = ["publickey"] }
 rustc-hex = "2.0.1"
 ethabi = "12.0.0"
 serde = "1.0"

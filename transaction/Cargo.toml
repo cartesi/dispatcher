@@ -19,10 +19,10 @@ serde_yaml = "0.8"
 ethcore = { git = "https://github.com/openethereum/openethereum", tag = "v3.0.0" }
 common-types = { git = "https://github.com/openethereum/openethereum", tag = "v3.0.0" }
 ethjson = { git = "https://github.com/openethereum/openethereum", tag = "v3.0.0" }
-ethkey = { git = "https://github.com/openethereum/openethereum", tag = "v3.0.0" }
+parity-crypto = { version = "0.6.1", features = ["publickey"] }
 ethereum-types = "0.9.0"
 keccak-hash = "0.1"
-rlp = { version = "0.3.0", features = ["ethereum"] }
+rlp = "0.4.5"
 web3 = "0.11.0"
 hex = "0.3.2"
 ethabi = "12.0.0"
