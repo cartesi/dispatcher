@@ -568,5 +568,13 @@ fn serialize_token(to: &Token) -> String {
                 .join(",\n");
             format!("[{}]", temp) // go
         }
+        ethabi::Token::Tuple(f) => {
+            let temp = f
+                .into_iter()
+                .map(|token| serialize_token(token))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("[{}]", temp) // go
+        }
     }
 }

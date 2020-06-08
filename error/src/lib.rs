@@ -47,7 +47,8 @@ error_chain! {
         Parsing(serde_yaml::Error);
         Env(envy::Error);
         HexParse(rustc_hex::FromHexError);
-        //EthAbi(ethabi::Error);
+        EthAbi(ethabi::Error);
+        Web3(web3::Error);
         JsonParse(serde_json::Error);
         Web3Contract(web3::contract::Error);
         LevelDB(leveldb::error::Error);
@@ -58,7 +59,7 @@ error_chain! {
     }
     links {
         //Web3(web3::error::Error, web3::error::ErrorKind) #[cfg(unix)];
-        EthAbiLink(ethabi::Error, ethabi::ErrorKind) #[cfg(unix)];
+        //EthAbiLink(ethabi::Error, ethabi::ErrorKind) #[cfg(unix)];
     }
     errors {
         Mpsc(details: String) {
