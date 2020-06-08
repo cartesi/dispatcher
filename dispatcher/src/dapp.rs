@@ -147,6 +147,8 @@ pub enum FieldType {
     AddressType,
     #[serde(rename = "address[3]")]
     AddressArray3Type,
+    #[serde(rename = "address[]")]
+    AddressArrayType,
     #[serde(rename = "uint256")]
     U256Type,
     #[serde(rename = "uint8")]
@@ -215,7 +217,7 @@ pub struct AddressField {
 pub struct AddressArray {
     pub name: String,
     #[serde(rename = "type")]
-    pub ty: AddressField,
+    pub ty: FieldType,
     pub value: Vec<Address>,
 }
 
