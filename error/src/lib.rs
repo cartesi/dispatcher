@@ -114,7 +114,7 @@ error_chain! {
             description("archive needs a dummy entry for the key")
                 display("archive needs a dummy entry for the key, service: {}, key: {}, method: {}", service, key, method)
         }
-        ServiceNeedsRetry(service: String, key: String, method: String, request: Vec<u8>, contract: String, status: u32, progress: u32, description: String) {
+        ServiceNeedsRetry(service: String, key: String, method: String, request: Vec<u8>, contract: String, status: u32, progress: u64, description: String) {
             description("service needs retry")
                 display("service needs retry, service: {}, key: {}, method: {}, contract: {}, status: {}, progress: {}, description: {}", service, key, method, contract, status, progress, description)
         }

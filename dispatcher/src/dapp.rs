@@ -51,9 +51,20 @@ impl Archive {
         key: String,
         method: String,
         request: Vec<u8>,
-    ) -> Result<std::result::Result<Vec<u8>, String>> {
+    ) -> Result<Vec<u8>> {
         match self.response_cache.get(&key) {
-            Some(response) => Ok(response.clone()),
+            Some(response) => {
+                match response {
+                    Ok(s) => {
+                        Ok(s.to_vec())
+                    },
+                    Err(_) => {
+                        Err(Error::from(ErrorKind::ResponseInvalidError(
+                            service, key, method,
+                        )))
+                    },
+                }
+            },
             None => Err(Error::from(ErrorKind::ResponseMissError(
                 service, key, method, request,
             ))),

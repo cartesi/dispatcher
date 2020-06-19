@@ -73,7 +73,7 @@ pub struct ServiceStatus {
     pub service_method: String,
     pub status: u32,
     pub description: String,
-    pub progress: u32,
+    pub progress: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
