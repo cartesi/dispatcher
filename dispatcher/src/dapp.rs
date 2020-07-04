@@ -225,14 +225,6 @@ pub struct Bytes32Array {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct BytesField {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub ty: FieldType,
-    pub value: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct BoolField {
     pub name: String,
     #[serde(rename = "type")]
@@ -272,4 +264,25 @@ pub struct String32Field {
     pub ty: FieldType,
     #[serde(deserialize_with = "string_from_hex")]
     pub value: String,
+}
+
+fn bytes_from_hex<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    // do better hex decoding than this
+    hex::decode(&s[2..])
+        .map_err(D::Error::custom)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BytesField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: FieldType,
+    #[serde(deserialize_with = "bytes_from_hex")]
+    pub value: Vec<u8>,
 }

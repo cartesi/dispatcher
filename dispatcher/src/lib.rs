@@ -70,7 +70,7 @@ use transport::GenericTransport;
 pub use dapp::{
     AddressArray, AddressField, Archive, BoolArray, BoolField,
     Bytes32Array, Bytes32Field, DApp, FieldType, Reaction, String32Field,
-    U256Array, U256Field,
+    U256Array, U256Field, BytesField,
 };
 
 /// Responsible for querying the state of each concern, get a reaction
