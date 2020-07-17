@@ -324,12 +324,23 @@ impl TransactionManager {
                         poll_interval,
                         confirmations,
                     )
+                    .map(|hash| {
+                        info!("Transaction sent with hash: {:?}", hash);
+                    })
+                    .or_else(|e| {
+                        // ignore the nonce error, by pass the other errors
+                        if let web3::error::Error::Rpc(ref rpc_error) = e {
+                            let nonce_error = String::from("the tx doesn't have the correct nonce");
+                            if rpc_error.message[..nonce_error.len()] == nonce_error {
+                                warn!("Ignoring nonce Error: {}", rpc_error.message);
+                                return Box::new(web3::futures::future::ok::<(), _>(()));
+                            }
+                        }
+                        return Box::new(web3::futures::future::err(e));
+                    })
                     .map_err(|e| {
                         warn!("Failed to send transaction. Error {}", e);
                         error::Error::from(e)
-                    })
-                    .map(|hash| {
-                        info!("Transaction sent with hash: {:?}", hash);
                     })
                 }),
         )
