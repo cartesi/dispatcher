@@ -306,7 +306,7 @@ impl TransactionManager {
 
 
                     match external_signer {
-                        true => {
+                        false => {
                             trace!("Signing transaction");
                             let signed_tx = Transaction {
                                 action: Action::Call(request_concern.contract_address),
@@ -356,7 +356,7 @@ impl TransactionManager {
                                 }))
                         }
 
-                        false => {
+                        true => {
                             info!("Getting accounts from signer");
                             Either::B(web3.eth()
                                 .accounts()
