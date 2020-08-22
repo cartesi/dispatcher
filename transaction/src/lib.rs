@@ -40,11 +40,11 @@ extern crate ethereum_types;
 extern crate ethjson;
 extern crate hex;
 extern crate keccak_hash;
+extern crate parity_crypto;
 extern crate rlp;
 extern crate serde_json;
-extern crate web3;
 extern crate transport;
-extern crate parity_crypto;
+extern crate web3;
 
 use common_types::transaction::{Action, Transaction};
 use configuration::{Concern, Configuration};
@@ -57,11 +57,12 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use std::time;
-use web3::futures::future::err;
-use web3::futures::Future;
-use web3::types::Bytes;
 use transport::GenericTransport;
+use web3::futures::future::err;
+use web3::futures::future::Either;
+use web3::futures::Future;
+use web3::types;
+use web3::types::Bytes;
 
 /// In the future there could be several strategies to submit a transaction.
 /// Simplest is based on estimated gas cost.
@@ -96,6 +97,7 @@ pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
     web3: Arc<web3::Web3<GenericTransport>>,
+    external_signer: bool,
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -172,10 +174,13 @@ impl TransactionManager {
             );
         }
 
+        let external_signer = config.clone().external_signer;
+
         Ok(TransactionManager {
             config: config,
             concern_data: concern_data,
             web3: Arc::new(web3),
+            external_signer: external_signer,
         })
     }
 
@@ -198,7 +203,7 @@ impl TransactionManager {
                         )),
                     )));
                 }
-            }
+            },
         };
         let concern_data = match self.concern_data.get(&request_concern) {
             Some(k) => k,
@@ -213,7 +218,6 @@ impl TransactionManager {
         let request = request.clone();
         let key = concern_data.key_pair.clone();
         let abi = concern_data.abi.clone();
-        let confirmations: usize = (&self).config.confirmations;
         let chain_id: u64 = (&self).config.chain_id;
 
         trace!("Getting nonce");
@@ -222,6 +226,11 @@ impl TransactionManager {
         let request_gas_usage = request.clone();
         let key_gas_price = key.clone();
         let key_gas_usage = key.clone();
+
+        let request_to_address = request.clone();
+
+        let external_signer = self.external_signer;
+
         Box::new(
             web3.clone()
                 .eth()
@@ -230,9 +239,7 @@ impl TransactionManager {
                     Some(web3::types::BlockNumber::Pending),
                 )
                 .map_err(|_e| {
-                    error::Error::from(
-                        format!("could not retrieve nonce"),
-                    )
+                    error::Error::from(format!("could not retrieve nonce"))
                 })
                 .and_then(move |nonce| {
                     trace!("Estimating gas price");
@@ -240,9 +247,9 @@ impl TransactionManager {
                         .eth()
                         .gas_price()
                         .map_err(|_e| {
-                            error::Error::from(
-                                format!("could not retrieve gas price"),
-                            )
+                            error::Error::from(format!(
+                                "could not retrieve gas price"
+                            ))
                         })
                         .map(move |gas_price| (nonce.clone(), gas_price))
                 })
@@ -269,7 +276,7 @@ impl TransactionManager {
                     let raw_data = raw_data_result.unwrap();
                     trace!("Buiding transaction");
                     let call_request = web3::types::CallRequest {
-                        from: Some(key_gas_usage.address()),
+                        from: Some(key_gas_usage.clone().address()),
                         to: request_gas_usage.concern.contract_address,
                         gas: None,
                         gas_price: None,
@@ -281,17 +288,15 @@ impl TransactionManager {
                         format!("{:?}", request_gas_usage.clone());
 
                     get_gas(web3_gas_usage, call_request, request_gas_usage)
-                    .map_err(move |_e| {
-                        error::Error::from(
-                            format!(
+                        .map_err(move |_e| {
+                            error::Error::from(format!(
                                 "could not estimate gas usage for call {:?}",
                                 request_string
-                            )
-                        )
-                    })
-                    .map(move |total_gas| {
-                        (nonce, gas_price, total_gas, raw_data)
-                    })
+                            ))
+                        })
+                        .map(move |total_gas| {
+                            (nonce, gas_price, total_gas, raw_data)
+                        })
                 })
                 .and_then(move |(nonce, gas_price, total_gas, raw_data)| {
                     trace!("Gas usage estimated to be {}", total_gas);
@@ -299,69 +304,143 @@ impl TransactionManager {
                     // Implement other sending strategies
                     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-                    trace!("Signing transaction");
-                    let signed_tx = Transaction {
-                        action: Action::Call(request_concern.contract_address),
-                        nonce: nonce,
-                        // do something better then double
-                        gas_price: U256::from(2)
-                            .checked_mul(gas_price)
-                            .unwrap(),
-                        // do something better then double
-                        gas: U256::from(2).checked_mul(total_gas).unwrap(),
-                        value: request.value,
-                        data: raw_data,
-                    }
-                    .sign(&key.secret(), Some(chain_id));
 
-                    info!("Sending transaction: {:?}", &request);
-                    let raw = Bytes::from(rlp::encode(&signed_tx));
-                    //let hash = await!(web3.eth().send_raw_transaction(raw));
-                    let poll_interval = time::Duration::from_secs(1);
-                    web3::confirm::send_raw_transaction_with_confirmation(
-                        web3.transport().clone(),
-                        raw,
-                        poll_interval,
-                        confirmations,
-                    )
-                    .map(|hash| {
-                        info!("Transaction sent with hash: {:?}", hash);
-                    })
-                    .or_else(|e| {
-                        // ignore the nonce error, by pass the other errors
-                        if let web3::error::Error::Rpc(ref rpc_error) = e {
-                            let nonce_error = String::from("the tx doesn't have the correct nonce");
-                            if rpc_error.message[..nonce_error.len()] == nonce_error {
-                                warn!("Ignoring nonce Error: {}", rpc_error.message);
-                                return Box::new(web3::futures::future::ok::<(), _>(()));
+                    match external_signer {
+                        true => {
+                            trace!("Signing transaction");
+                            let signed_tx = Transaction {
+                                action: Action::Call(request_concern.contract_address),
+                                nonce: nonce,
+                                // do something better then double
+                                gas_price: U256::from(2)
+                                    .checked_mul(gas_price)
+                                    .unwrap(),
+                                    // do something better then double
+                                    gas: U256::from(2).checked_mul(total_gas).unwrap(),
+                                    value: request.value,
+                                    data: raw_data,
                             }
+                            .sign(&key.secret(), Some(chain_id));
+
+                            info!("Sending transaction: {:?}", &request);
+                            let raw = Bytes::from(rlp::encode(&signed_tx));
+                            //let hash = await!(web3.eth().send_raw_transaction(raw));
+
+                            Either::A(web3.eth().send_raw_transaction(raw)
+                                .map(|hash| {
+                                    info!("Transaction sent with hash: {:?}", hash);
+                                })
+                                .or_else(|e| {
+                                    // ignore the nonce error, by pass the other errors
+                                    if let web3::error::Error::Rpc(ref rpc_error) = e {
+                                        let nonce_error = String::from(
+                                            "the tx doesn't have the correct nonce",
+                                        );
+                                        if rpc_error.message[..nonce_error.len()]
+                                            == nonce_error
+                                        {
+                                            warn!(
+                                                "Ignoring nonce Error: {}",
+                                                rpc_error.message
+                                            );
+                                            return Box::new(web3::futures::future::ok::<(), _,> (
+                                                ()
+                                            ));
+                                        }
+                                    }
+                                    return Box::new(web3::futures::future::err(e));
+                                })
+                                .map_err(|e| {
+                                    warn!("Failed to send transaction. Error {}", e);
+                                    error::Error::from(e)
+                                }))
                         }
-                        return Box::new(web3::futures::future::err(e));
-                    })
-                    .map_err(|e| {
-                        warn!("Failed to send transaction. Error {}", e);
-                        error::Error::from(e)
-                    })
+
+                        false => {
+                            info!("Getting accounts from signer");
+                            Either::B(web3.eth()
+                                .accounts()
+                                .map_err(|_e| {
+                                    error::Error::from(format!(
+                                        "Coult not get accounts"
+                                    ))
+                                })
+                                .and_then(move |accounts| {
+                                    let tx_request =
+                                        types::TransactionRequest {
+                                            from: accounts[0],
+                                            to: Some(
+                                                request_to_address
+                                                    .concern
+                                                    .contract_address,
+                                            ),
+                                            // do something better then double
+                                            gas_price: Some(
+                                                U256::from(2)
+                                                    .checked_mul(gas_price)
+                                                    .unwrap(),
+                                            ),
+                                            // do something better then double
+                                            gas: Some(
+                                                U256::from(2)
+                                                    .checked_mul(total_gas)
+                                                    .unwrap(),
+                                            ),
+                                            value: Some(request.value),
+                                            data: Some(Bytes(raw_data.clone())),
+                                            condition: None,
+                                            nonce: Some(nonce),
+                                        };
+
+                                    info!("Sending unsigned transaction to signer: {:?}", &request);
+                                    web3.eth().send_transaction(tx_request)
+                                        .map(|hash| {
+                                            info!("Transaction sent with hash: {:?}", hash);
+                                        })
+                                        .or_else(|e| {
+                                            // ignore the nonce error, by pass the other errors
+                                            if let web3::error::Error::Rpc(ref rpc_error) = e {
+                                                let nonce_error = String::from(
+                                                    "the tx doesn't have the correct nonce",
+                                                );
+                                                if rpc_error.message[..nonce_error.len()]
+                                                    == nonce_error
+                                                {
+                                                    warn!(
+                                                        "Ignoring nonce Error: {}",
+                                                        rpc_error.message
+                                                    );
+                                                    return Box::new(web3::futures::future::ok::<(),_,> (
+                                                            ()
+                                                    ));
+                                                }
+                                            }
+                                            return Box::new(web3::futures::future::err(e));
+                                        })
+                                        .map_err(|e| {
+                                            warn!("Failed to send transaction. Error {}", e);
+                                            error::Error::from(e)
+                                        })
+                                }))
+                        }
+                    }
+
                 }),
         )
     }
 }
-    
+
 fn get_gas(
     web3: Arc<web3::Web3<GenericTransport>>,
     call_request: web3::types::CallRequest,
-    request: TransactionRequest
+    request: TransactionRequest,
 ) -> Box<dyn Future<Item = U256, Error = web3::Error> + Send> {
     match request.gas {
         Some(gas) => {
             return Box::new(web3::futures::future::ok::<U256, _>(gas));
-        },
+        }
         None => {
-            return Box::new(
-                web3
-                .eth()
-                .estimate_gas(call_request, None)
-            );
+            return Box::new(web3.eth().estimate_gas(call_request, None));
         }
     }
 }
