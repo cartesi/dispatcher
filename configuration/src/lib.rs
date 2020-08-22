@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 //! Configuration for a cartesi node, including config file, command
 //! line arguments and environmental variables.
 
@@ -41,9 +39,9 @@ extern crate log;
 extern crate db_key;
 extern crate ethereum_types;
 extern crate hex;
+extern crate serde_json;
 extern crate time;
 extern crate web3;
-extern crate serde_json;
 
 const DEFAULT_CONFIG_PATH: &str = "config.yaml";
 const DEFAULT_MAX_DELAY: u64 = 500;
@@ -51,6 +49,7 @@ const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
 use ethereum_types::Address;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
@@ -58,9 +57,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use time::Duration;
-use web3::futures::Future;
-use serde_json::Value;
 use transport::GenericTransport;
+use web3::futures::Future;
 
 /// A concern is a pair (smart contract, user) that this node should
 /// take care of.
@@ -130,10 +128,9 @@ impl db_key::Key for Concern {
 impl Concern {
     /// A bytes representation of a concern
     pub fn to_bytes(&self) -> Vec<u8> {
-        let result = [
-                self.contract_address.as_ref(),
-                self.user_address.as_ref()]
-            .concat();
+        let result =
+            [self.contract_address.as_ref(), self.user_address.as_ref()]
+                .concat();
         return Vec::from(&result[..]);
     }
 }
@@ -208,6 +205,10 @@ struct EnvCLIConfiguration {
     polling_interval: Option<u64>,
     #[structopt(long = "web3_timeout")]
     web3_timeout: Option<u64>,
+
+    /// Indicates the use of a external signer
+    #[structopt(short = "es", long = "external_signer")]
+    external_signer: Option<bool>,
 }
 
 /// Structure to parse configuration from file
@@ -226,6 +227,7 @@ struct FileConfiguration {
     confirmations: Option<usize>,
     polling_interval: Option<u64>,
     web3_timeout: Option<u64>,
+    external_signer: Option<bool>,
 }
 
 /// Configuration after parsing
@@ -246,6 +248,7 @@ pub struct Configuration {
     pub polling_interval: u64,
     pub web3_timeout: u64,
     pub chain_id: u64,
+    pub external_signer: bool,
 }
 
 /// check if a given transport is well formed (having all valid arguments).
@@ -275,7 +278,8 @@ impl fmt::Display for Configuration {
              Working path: {:?}, \
              Number of services: {}, \
              Number of confirmations: {}, \
-             Query port: {}",
+             Query port: {}, \
+             Using external signer: {}",
             self.url,
             self.testing,
             self.max_delay,
@@ -286,6 +290,7 @@ impl fmt::Display for Configuration {
             self.services.len(),
             self.confirmations,
             self.query_port,
+            self.external_signer
         )
     }
 }
@@ -415,26 +420,33 @@ fn combine_config(
         })
         .wait()?;
     info!("Connected to Ethereum node with network id {}", &network_id);
-        
+
     let url_clone = url.clone();
     let chain_id: u64 = web3
-    .eth()
-    .chain_id()
-    .map_err(move |e| {
-        error!("{}", e);
-        Error::from(ErrorKind::ChainError(format!(
-            "no Ethereum node responding at url: {}",
-            url_clone
-        )))
-    })
-    .wait()?
-    .as_u64();
+        .eth()
+        .chain_id()
+        .map_err(move |e| {
+            error!("{}", e);
+            Error::from(ErrorKind::ChainError(format!(
+                "no Ethereum node responding at url: {}",
+                url_clone
+            )))
+        })
+        .wait()?
+        .as_u64();
 
     // determine testing (cli -> env -> config)
     let testing: bool = cli_config
         .testing
         .or(env_config.testing)
         .or(file_config.testing)
+        .unwrap_or(false);
+
+    // determine if using external signer (cli -> env -> config)
+    let external_signer: bool = cli_config
+        .external_signer
+        .or(env_config.external_signer)
+        .or(file_config.external_signer)
         .unwrap_or(false);
 
     // determine max_delay (cli -> env -> config)
@@ -467,10 +479,14 @@ fn combine_config(
     for service in &file_config.services {
         if !name_set.insert(service.name.clone()) {
             return Err(Error::from(ErrorKind::InvalidConfig(format!(
-                "Duplicate service names found: {}", service.name
+                "Duplicate service names found: {}",
+                service.name
             ))));
         }
-        let _transport = validate_transport(service.transport.address.clone(), service.transport.port)?;
+        let _transport = validate_transport(
+            service.transport.address.clone(),
+            service.transport.port,
+        )?;
     }
 
     let query_port: u16 = cli_config
@@ -524,7 +540,8 @@ fn combine_config(
 
     // insert all full concerns into concerns and abis
     for full_concern in full_concerns {
-        let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
+        let contract_address =
+            get_contract_address(full_concern.abi.clone(), network_id.clone())?;
 
         let mut concern: Concern = full_concern.clone().into();
         concern.contract_address = contract_address;
@@ -543,7 +560,10 @@ fn combine_config(
     if let Some(contract_full_concerns) = file_config.contracts {
         // insert all contract concerns into concerns and abis
         for (name, full_concern) in contract_full_concerns.iter() {
-            let contract_address = get_contract_address(full_concern.abi.clone(), network_id.clone())?;
+            let contract_address = get_contract_address(
+                full_concern.abi.clone(),
+                network_id.clone(),
+            )?;
 
             let mut concern: Concern = full_concern.clone().into();
             concern.contract_address = contract_address;
@@ -555,15 +575,13 @@ fn combine_config(
                     abi: full_concern.abi.clone(),
                 },
             );
-            contracts.insert(
-                name.clone(),
-                concern.clone(),
-            );
+            contracts.insert(name.clone(), concern.clone());
             concerns.push(concern);
         }
     }
 
-    let contract_address = get_contract_address(main_concern.abi.clone(), network_id.clone())?;
+    let contract_address =
+        get_contract_address(main_concern.abi.clone(), network_id.clone())?;
 
     let mut concern: Concern = main_concern.clone().into();
     concern.contract_address = contract_address;
@@ -593,6 +611,7 @@ fn combine_config(
         polling_interval: polling_interval,
         web3_timeout: web3_timeout,
         chain_id: chain_id,
+        external_signer: external_signer,
     })
 }
 
@@ -604,13 +623,18 @@ fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
         .chain_err(|| format!("could not read truffle json file"))?;
 
     // retrieve the contract address
-    let contract_address_option = v["networks"][&network_id]["address"].as_str()
+    let contract_address_option = v["networks"][&network_id]["address"]
+        .as_str()
         .or(v["address"].as_str());
     let contract_address_str = match contract_address_option {
         Some(address_str) => address_str.split_at(2).1,
-        None => return Err(Error::from(ErrorKind::InvalidConfig(format!(
-            "Fail to parse contract address from file {} with network id {}", abi.display(), &network_id
+        None => {
+            return Err(Error::from(ErrorKind::InvalidConfig(format!(
+            "Fail to parse contract address from file {} with network id {}",
+            abi.display(),
+            &network_id
         ))))
+        }
     };
     let contract_address: Address = contract_address_str.parse()?;
 
