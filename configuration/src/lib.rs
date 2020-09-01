@@ -39,6 +39,7 @@ extern crate log;
 extern crate db_key;
 extern crate ethereum_types;
 extern crate hex;
+extern crate parity_crypto;
 extern crate serde_json;
 extern crate time;
 extern crate web3;
@@ -49,6 +50,7 @@ const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
 use ethereum_types::Address;
+use parity_crypto::publickey::KeyPair;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -97,6 +99,23 @@ impl From<FullConcern> for Concern {
         Concern {
             contract_address: std::default::Default::default(),
             user_address: full.user_address,
+        }
+    }
+}
+
+/// Either a key pair, or a single address, to be used either to sign a
+/// transaction, or to send an unsigned transaction to an external signer.
+#[derive(Clone, Debug)]
+pub enum ConcernKey {
+    KeyPair(KeyPair),
+    UserAddress(Address),
+}
+
+impl ConcernKey {
+    pub fn address(&self) -> Address {
+        match self {
+            ConcernKey::KeyPair(key_pair) => key_pair.address(),
+            ConcernKey::UserAddress(address) => address.clone(),
         }
     }
 }
@@ -205,10 +224,6 @@ struct EnvCLIConfiguration {
     polling_interval: Option<u64>,
     #[structopt(long = "web3_timeout")]
     web3_timeout: Option<u64>,
-
-    /// Indicates the use of a external signer
-    #[structopt(short = "es", long = "external_signer")]
-    external_signer: Option<bool>,
 }
 
 /// Structure to parse configuration from file
@@ -227,7 +242,6 @@ struct FileConfiguration {
     confirmations: Option<usize>,
     polling_interval: Option<u64>,
     web3_timeout: Option<u64>,
-    external_signer: Option<bool>,
 }
 
 /// Configuration after parsing
@@ -248,7 +262,7 @@ pub struct Configuration {
     pub polling_interval: u64,
     pub web3_timeout: u64,
     pub chain_id: u64,
-    pub external_signer: bool,
+    pub signer_user_address: ConcernKey,
 }
 
 /// check if a given transport is well formed (having all valid arguments).
@@ -279,7 +293,7 @@ impl fmt::Display for Configuration {
              Number of services: {}, \
              Number of confirmations: {}, \
              Query port: {}, \
-             Using external signer: {}",
+             Using external signer: {:?}",
             self.url,
             self.testing,
             self.max_delay,
@@ -290,7 +304,7 @@ impl fmt::Display for Configuration {
             self.services.len(),
             self.confirmations,
             self.query_port,
-            self.external_signer
+            self.signer_user_address
         )
     }
 }
@@ -323,6 +337,8 @@ impl Configuration {
         file.read_to_string(&mut contents).chain_err(|| {
             format!("could not read from configuration file: {}", config_path)
         })?;
+        info!("File args: {}", contents); // implement Display instead
+
         let file_config: FileConfiguration =
             serde_yaml::from_str(&contents[..])
                 .map_err(|e| error::Error::from(e))
@@ -349,32 +365,40 @@ impl Configuration {
     }
 }
 
-/// check if a given concern is well formed (either having all arguments
-/// or none).
+/// check if a given concern is well formed (either having both user and abi,
+/// or neither).
 fn validate_concern(
     user: Option<String>,
     abi: Option<String>,
 ) -> Result<Option<FullConcern>> {
-    // if some option is Some, both should be
-    if user.is_some() || abi.is_some() {
-        Ok(Some(FullConcern {
-            user_address: user
-                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-                    "Concern's user should be specified",
-                ))))?
-                .trim_start_matches("0x")
-                .parse()
-                .chain_err(|| format!("failed to parse user address"))?,
-            abi: abi
-                .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-                    "Concern's abi should be specified",
-                ))))?
-                .parse()
-                .chain_err(|| format!("failed to parse contract's abi"))?,
-        }))
-    } else {
-        Ok(None)
+    if user.is_none() && abi.is_none() {
+        return Ok(None);
+    };
+
+    match (parse_user_address(user), parse_abi(abi)) {
+        (Ok(user_address), Ok(abi)) => Ok(Some(FullConcern {
+            user_address: user_address,
+            abi: abi,
+        })),
+        (Err(err), _) | (_, Err(err)) => Err(err),
     }
+}
+
+fn parse_abi(abi: Option<String>) -> Result<PathBuf> {
+    abi.ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+        "Concern's abi should be specified",
+    ))))?
+    .parse()
+    .chain_err(|| format!("failed to parse contract's abi"))
+}
+
+fn parse_user_address(user: Option<String>) -> Result<Address> {
+    user.ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
+        "Concern's user should be specified",
+    ))))?
+    .trim_start_matches("0x")
+    .parse()
+    .chain_err(|| format!("failed to parse user address"))
 }
 
 /// Combines the three configurations from: CLI, Environment and file.
@@ -435,18 +459,37 @@ fn combine_config(
         .wait()?
         .as_u64();
 
+    // determine if using external signer, by checking if there's no
+    // concern key.
+    let signer_user_address = if std::env::var("CARTESI_CONCERN_KEY").is_err() {
+        let accounts = web3
+            .eth()
+            .accounts()
+            .map_err(move |e| {
+                error!("{}", e);
+                Error::from(ErrorKind::ChainError(format!(
+                    "Could not get user_address from external signer",
+                )))
+            })
+            .wait()?;
+        if !accounts.is_empty() {
+            ConcernKey::UserAddress(accounts[0])
+        } else {
+            return Err(Error::from(ErrorKind::ChainError(format!(
+                "External signer returned zero accounts",
+            ))));
+        }
+    } else {
+        let key =
+            recover_key().chain_err(|| "could not find key for concern")?;
+        ConcernKey::KeyPair(key)
+    };
+
     // determine testing (cli -> env -> config)
     let testing: bool = cli_config
         .testing
         .or(env_config.testing)
         .or(file_config.testing)
-        .unwrap_or(false);
-
-    // determine if using external signer (cli -> env -> config)
-    let external_signer: bool = cli_config
-        .external_signer
-        .or(env_config.external_signer)
-        .or(file_config.external_signer)
         .unwrap_or(false);
 
     // determine max_delay (cli -> env -> config)
@@ -611,7 +654,7 @@ fn combine_config(
         polling_interval: polling_interval,
         web3_timeout: web3_timeout,
         chain_id: chain_id,
-        external_signer: external_signer,
+        signer_user_address: signer_user_address,
     })
 }
 
@@ -639,4 +682,26 @@ fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
     let contract_address: Address = contract_address_str.parse()?;
 
     Ok(contract_address)
+}
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// we need to implement recovering keys in keystore
+// the current method uses environmental variables
+// and it is not safe enough
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+fn recover_key() -> Result<KeyPair> {
+    info!("Recovering key from environment variable");
+    let key_string: String =
+        std::env::var("CARTESI_CONCERN_KEY").chain_err(|| {
+            format!(
+                "for now, keys must be provided as env variable, provide one"
+            )
+        })?;
+    let key_pair = KeyPair::from_secret(
+        key_string
+            .trim_start_matches("0x")
+            .parse()
+            .chain_err(|| format!("failed to parse key"))?,
+    )?;
+    Ok(key_pair)
 }
