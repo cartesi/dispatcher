@@ -663,9 +663,9 @@ fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
     let mut s = String::new();
     file.read_to_string(&mut s)?;
     let v: Value = serde_json::from_str(&s[..])
-        .chain_err(|| format!("could not read truffle json file"))?;
+        .chain_err(|| format!("could not read contract json file"))?;
 
-    // retrieve the contract address
+    // retrieve the contract address (supports both truffle and buidler formats)
     let contract_address_option = v["networks"][&network_id]["address"]
         .as_str()
         .or(v["address"].as_str());

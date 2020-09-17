@@ -126,7 +126,7 @@ impl TransactionManager {
             let mut s = String::new();
             file.read_to_string(&mut s)?;
             let v: Value = serde_json::from_str(&s[..])
-                .chain_err(|| format!("could not read truffle json file"))?;
+                .chain_err(|| format!("could not read contract json file"))?;
 
             // create a low level abi for contract
             let abi = ethabi::Contract::load(
