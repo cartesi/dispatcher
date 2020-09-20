@@ -97,7 +97,6 @@ pub struct TransactionManager {
     config: Configuration,
     concern_data: HashMap<Concern, ConcernData>,
     web3: Arc<web3::Web3<GenericTransport>>,
-    // external_signer: bool,
 }
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -111,7 +110,7 @@ impl TransactionManager {
         config: Configuration,
         web3: web3::Web3<GenericTransport>,
     ) -> Result<TransactionManager> {
-        let signer_user_address = config.clone().signer_user_address;
+        let signer_user_address = config.clone().signer_key;
 
         let mut concern_data = HashMap::new();
         // loop through each concern, adding them to the concern's data

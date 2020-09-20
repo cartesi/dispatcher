@@ -87,6 +87,14 @@ pub struct ConcernAbi {
     pub abi: PathBuf,
 }
 
+/// A worker node, with its ABI and address
+#[derive(Debug, Clone)]
+pub struct Worker {
+    pub abi: PathBuf,
+    pub contract_address: Address,
+    pub key: ConcernKey,
+}
+
 /// A concern together with an ABI
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FullConcern {
@@ -224,6 +232,9 @@ struct EnvCLIConfiguration {
     polling_interval: Option<u64>,
     #[structopt(long = "web3_timeout")]
     web3_timeout: Option<u64>,
+    /// Main concern's contract's abi
+    #[structopt(long = "worker_abi")]
+    worker_abi: Option<String>,
 }
 
 /// Structure to parse configuration from file
@@ -242,6 +253,7 @@ struct FileConfiguration {
     confirmations: Option<usize>,
     polling_interval: Option<u64>,
     web3_timeout: Option<u64>,
+    worker_abi: Option<String>,
 }
 
 /// Configuration after parsing
@@ -262,7 +274,8 @@ pub struct Configuration {
     pub polling_interval: u64,
     pub web3_timeout: u64,
     pub chain_id: u64,
-    pub signer_user_address: ConcernKey,
+    pub signer_key: ConcernKey,
+    pub worker: Option<Worker>,
 }
 
 /// check if a given transport is well formed (having all valid arguments).
@@ -304,7 +317,7 @@ impl fmt::Display for Configuration {
             self.services.len(),
             self.confirmations,
             self.query_port,
-            self.signer_user_address
+            self.signer_key
         )
     }
 }
@@ -461,7 +474,7 @@ fn combine_config(
 
     // determine if using external signer, by checking if there's no
     // concern key.
-    let signer_user_address = if std::env::var("CARTESI_CONCERN_KEY").is_err() {
+    let signer_key = if std::env::var("CARTESI_CONCERN_KEY").is_err() {
         let accounts = web3
             .eth()
             .accounts()
@@ -514,6 +527,28 @@ fn combine_config(
         .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
             "Need to provide working path (config file, command line or env)",
         ))))?);
+
+    info!("determine worker abi");
+    let worker = {
+        let abi = cli_config
+            .worker_abi
+            .or(env_config.worker_abi)
+            .or(file_config.worker_abi)
+            .and_then(|path| Some(PathBuf::from(&path)));
+
+        match abi {
+            Some(abi) => {
+                let address =
+                    get_contract_address(abi.clone(), network_id.clone())?;
+                Some(Worker {
+                    abi: abi,
+                    contract_address: address,
+                    key: signer_key.clone(),
+                })
+            }
+            None => None,
+        }
+    };
 
     // determine no two services has the same name,
     // and the transports are valid
@@ -654,7 +689,8 @@ fn combine_config(
         polling_interval: polling_interval,
         web3_timeout: web3_timeout,
         chain_id: chain_id,
-        signer_user_address: signer_user_address,
+        signer_key: signer_key,
+        worker: worker,
     })
 }
 
