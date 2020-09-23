@@ -36,12 +36,10 @@ extern crate web3;
 extern crate serde_derive;
 #[macro_use]
 extern crate log;
-extern crate common_types;
 extern crate env_logger;
 extern crate ethabi;
 extern crate hex;
 extern crate hyper;
-extern crate rlp;
 extern crate serde;
 extern crate serde_json;
 extern crate state;
@@ -50,19 +48,14 @@ extern crate transport;
 
 use std::str;
 
-use common_types::transaction::{Action, Transaction};
-use configuration::{Concern, ConcernKey, Configuration, Worker};
+use configuration::{Concern, Configuration};
 pub use error::*;
-use ethereum_types::Address;
 use grpc::{Client, RequestOptions};
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Server, StatusCode};
-use serde_json::Value;
 use state::StateManager;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::prelude::Sink;
@@ -137,16 +130,16 @@ impl Dispatcher {
 
         // If this is a worker node, accept the job if you already haven't. This is a blocking
         // function call, and may take a while to complete.
-        match &config.worker {
-            Some(worker) => accept_job(
-                &web3,
-                worker,
-                config.main_concern.user_address.clone(),
-                config.chain_id,
-            ),
-            None => Ok(()),
-        }
-        .chain_err(|| format!("worker could not accept job"))?;
+        // match &config.worker {
+        //     Some(worker) => accept_job(
+        //         &web3,
+        //         worker,
+        //         config.main_concern.user_address.clone(),
+        //         config.chain_id,
+        //     ),
+        //     None => Ok(()),
+        // }
+        // .chain_err(|| format!("worker could not accept job"))?;
 
         info!("Creating transaction manager");
         let transaction_manager =
@@ -778,262 +771,4 @@ fn grpc_call_unary(
     });
 
     client.call_unary(RequestOptions::new(), req, method)
-}
-
-// Worker accept job if needed
-fn accept_job(
-    web3: &web3::Web3<GenericTransport>,
-    worker: &Worker,
-    user_address: Address,
-    chain_id: u64,
-) -> Result<()> {
-    // Load abi
-    let mut file = File::open(worker.abi.clone())?;
-    let mut s = String::new();
-    file.read_to_string(&mut s)?;
-    let v: Value = serde_json::from_str(&s[..])
-        .chain_err(|| format!("could not read truffle json file"))?;
-
-    // create a contract object
-    let contract = web3::contract::Contract::from_json(
-        web3.eth().clone(),
-        worker.contract_address,
-        serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
-    )
-    .chain_err(|| format!("could not decode json abi"))?;
-
-    // Create a low level abi for worker contract
-    let abi = ethabi::Contract::load(
-        serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
-    )?;
-
-    loop {
-        info!("Getting worker state");
-        let worker_state = get_worker_state(&contract, worker)?;
-        info!("Worker state: {:?}", worker_state);
-
-        match worker_state {
-            WorkerState::Available => (),
-            WorkerState::Pending(owner_address) => {
-                test_owner(owner_address, user_address)?;
-
-                // Accept job
-                send_accept_job(web3, &abi, worker, chain_id)?;
-            }
-            WorkerState::Owned(owner_address) => {
-                test_owner(owner_address, user_address)?;
-                return Ok(());
-            }
-            WorkerState::Retired(_) => {
-                // If worker is retired, stop and return error. This error is unrecoverable.
-                return Err(Error::from(format!("Worker is retired")));
-            }
-        }
-
-        // Wait 15 seconds before trying again.
-        // let when = Instant::now() +
-        std::thread::sleep(Duration::from_secs(15));
-        // let _ = Delay::new(when).wait();
-    }
-}
-
-#[derive(Debug, Clone)]
-enum WorkerState {
-    Available,
-    Pending(Address),
-    Owned(Address),
-    Retired(Address),
-}
-
-fn get_worker_state(
-    contract: &web3::contract::Contract<GenericTransport>,
-    worker: &Worker,
-) -> Result<WorkerState> {
-    let (query_result, user_address): (_, Address) =
-        web3::futures::future::join_all(vec![
-            build_worker_state_query("isAvailable", contract, worker),
-            build_worker_state_query("isPending", contract, worker),
-            build_worker_state_query("isOwned", contract, worker),
-            build_worker_state_query("isRetired", contract, worker),
-        ])
-        .join(contract.query(
-            "getUser",
-            worker.key.address(),
-            None,
-            web3::contract::Options::default(),
-            None,
-        ))
-        .wait()?;
-
-    let query_result = (
-        query_result[0],
-        query_result[1],
-        query_result[2],
-        query_result[3],
-    );
-
-    match query_result {
-        (true, _, _, _) => Ok(WorkerState::Available),
-        (_, true, _, _) => Ok(WorkerState::Pending(user_address)),
-        (_, _, true, _) => Ok(WorkerState::Owned(user_address)),
-        (_, _, _, true) => Ok(WorkerState::Retired(user_address)),
-        (false, false, false, false) => {
-            Err(Error::from(format!("Invalid blockchain state")))
-        }
-    }
-}
-
-fn build_worker_state_query(
-    func: &str,
-    contract: &web3::contract::Contract<GenericTransport>,
-    worker: &Worker,
-) -> web3::contract::QueryResult<
-    bool,
-    std::boxed::Box<
-        dyn tokio::prelude::Future<
-                Item = serde_json::Value,
-                Error = web3::Error,
-            > + std::marker::Send,
-    >,
-> {
-    contract.query(
-        func,
-        worker.key.address(),
-        None,
-        web3::contract::Options::default(),
-        None,
-    )
-}
-
-fn test_owner(owner: Address, user: Address) -> Result<()> {
-    // This node represents user_address. If owner of worker is not the owner of this
-    // node, stop and return an error. This error is unrecoverable.
-    if owner != user {
-        Err(Error::from(format!("Owner is not user")))
-    } else {
-        Ok(())
-    }
-}
-
-fn send_accept_job(
-    web3: &web3::Web3<GenericTransport>,
-    abi: &ethabi::Contract,
-    worker: &Worker,
-    chain_id: u64,
-) -> Result<()> {
-    let web3::contract::Options {
-        gas,
-        gas_price,
-        value,
-        nonce: _,
-        condition: _,
-    } = web3::contract::Options::default();
-
-    let nonce = web3
-        .eth()
-        .transaction_count(worker.key.address(), None)
-        .wait()?;
-
-    abi.function("acceptJob")
-        .and_then(|function| function.encode_input(&[]))
-        .map(move |data| {
-            match &worker.key {
-                ConcernKey::UserAddress(address) => {
-                    let tx_request = web3::types::TransactionRequest {
-                        from: *address,
-                        to: Some(worker.contract_address),
-                        gas_price: gas_price,
-                        gas: gas,
-                        value: value,
-                        data: Some(web3::types::Bytes(data)),
-                        condition: None,
-                        nonce: Some(nonce),
-                    };
-
-                    trace!("Sending unsigned transaction");
-                    web3.eth()
-                        .send_transaction(tx_request)
-                        .map(|hash| {
-                            info!("Transaction sent with hash: {:?}", hash);
-                        })
-                        .or_else(|e| {
-                            // ignore the nonce error, by pass the other errors
-                            if let web3::error::Error::Rpc(ref rpc_error) = e {
-                                let nonce_error = String::from(
-                                    "the tx doesn't have the correct nonce",
-                                );
-                                if rpc_error.message[..nonce_error.len()]
-                                    == nonce_error
-                                {
-                                    warn!(
-                                        "Ignoring nonce Error: {}",
-                                        rpc_error.message
-                                    );
-                                    return Box::new(
-                                        web3::futures::future::ok::<(), _>(()),
-                                    );
-                                }
-                            }
-                            return Box::new(web3::futures::future::err(e));
-                        })
-                        .map_err(|e| {
-                            warn!("Failed to send transaction. Error {}", e);
-                            error::Error::from(e)
-                        })
-                        .wait()?;
-
-                    Ok(())
-                }
-                ConcernKey::KeyPair(key_pair) => {
-                    trace!("Signing transaction");
-                    let signed_tx = Transaction {
-                        action: Action::Call(worker.contract_address),
-                        nonce: nonce,
-                        // do something better then double
-                        gas_price: gas_price.unwrap(),
-                        // do something better then double
-                        gas: gas.unwrap(),
-                        value: value.unwrap(),
-                        data: data,
-                    }
-                    .sign(&key_pair.secret(), Some(chain_id));
-
-                    info!("Sending accept job transaction");
-                    let raw = web3::types::Bytes::from(rlp::encode(&signed_tx));
-
-                    web3.eth()
-                        .send_raw_transaction(raw)
-                        .map(|hash| {
-                            info!("Transaction sent with hash: {:?}", hash);
-                        })
-                        .or_else(|e| {
-                            // ignore the nonce error, by pass the other errors
-                            if let web3::error::Error::Rpc(ref rpc_error) = e {
-                                let nonce_error = String::from(
-                                    "the tx doesn't have the correct nonce",
-                                );
-                                if rpc_error.message[..nonce_error.len()]
-                                    == nonce_error
-                                {
-                                    warn!(
-                                        "Ignoring nonce Error: {}",
-                                        rpc_error.message
-                                    );
-                                    return Box::new(
-                                        web3::futures::future::ok::<(), _>(()),
-                                    );
-                                }
-                            }
-                            return Box::new(web3::futures::future::err(e));
-                        })
-                        .map_err(|e| {
-                            warn!("Failed to send transaction. Error {}", e);
-                            error::Error::from(e)
-                        })
-                        .wait()?;
-
-                    Ok(())
-                }
-            }
-        })?
 }

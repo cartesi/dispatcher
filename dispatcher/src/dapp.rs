@@ -26,9 +26,9 @@ use super::error::*;
 use super::ethereum_types::{Address, H256, U256};
 use super::serde::de::Error as SerdeError;
 use super::serde::{Deserialize, Deserializer};
+use super::state::ServiceStatus;
 use super::transaction::TransactionRequest;
 use super::HashMap;
-use super::state::ServiceStatus;
 
 /// The total archive, for each machine session
 pub struct Archive {
@@ -53,17 +53,11 @@ impl Archive {
         request: Vec<u8>,
     ) -> Result<Vec<u8>> {
         match self.response_cache.get(&key) {
-            Some(response) => {
-                match response {
-                    Ok(s) => {
-                        Ok(s.to_vec())
-                    },
-                    Err(_) => {
-                        Err(Error::from(ErrorKind::ResponseInvalidError(
-                            service, key, method,
-                        )))
-                    },
-                }
+            Some(response) => match response {
+                Ok(s) => Ok(s.to_vec()),
+                Err(_) => Err(Error::from(ErrorKind::ResponseInvalidError(
+                    service, key, method,
+                ))),
             },
             None => Err(Error::from(ErrorKind::ResponseMissError(
                 service, key, method, request,
@@ -71,20 +65,17 @@ impl Archive {
         }
     }
 
-    pub fn get_service(
-        &self,
-        key: String,
-    ) -> ServiceStatus {
-        self.service_status.get(&key).unwrap_or(
-            &ServiceStatus {
+    pub fn get_service(&self, key: String) -> ServiceStatus {
+        self.service_status
+            .get(&key)
+            .unwrap_or(&ServiceStatus {
                 service_name: "".into(),
                 service_method: "".into(),
                 status: 0,
                 description: "".into(),
-                progress: 0
-            }
-        )
-        .clone()
+                progress: 0,
+            })
+            .clone()
     }
 
     pub fn insert_response(
@@ -274,8 +265,7 @@ where
 {
     let s: &str = Deserialize::deserialize(deserializer)?;
     // do better hex decoding than this
-    hex::decode(&s[2..])
-        .map_err(D::Error::custom)
+    hex::decode(&s[2..]).map_err(D::Error::custom)
 }
 
 #[derive(Serialize, Deserialize)]
