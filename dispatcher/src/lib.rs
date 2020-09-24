@@ -128,19 +128,6 @@ impl Dispatcher {
         let web3 = web3::Web3::new(transport);
         web3.test_connection(&config).wait()?;
 
-        // If this is a worker node, accept the job if you already haven't. This is a blocking
-        // function call, and may take a while to complete.
-        // match &config.worker {
-        //     Some(worker) => accept_job(
-        //         &web3,
-        //         worker,
-        //         config.main_concern.user_address.clone(),
-        //         config.chain_id,
-        //     ),
-        //     None => Ok(()),
-        // }
-        // .chain_err(|| format!("worker could not accept job"))?;
-
         info!("Creating transaction manager");
         let transaction_manager =
             TransactionManager::new(config.clone(), web3.clone()).chain_err(

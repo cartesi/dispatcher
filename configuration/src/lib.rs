@@ -381,25 +381,6 @@ impl Configuration {
     }
 }
 
-/// check if a given concern is well formed (either having both user and abi,
-/// or neither).
-// fn validate_concern(
-//     user: Option<String>,
-//     abi: Option<String>,
-// ) -> Result<Option<FullConcern>> {
-//     if user.is_none() && abi.is_none() {
-//         return Ok(None);
-//     };
-
-//     match (parse_user_address(user), parse_abi(abi)) {
-//         (Ok(user_address), Ok(abi)) => Ok(Some(FullConcern {
-//             user_address: user_address,
-//             abi: abi,
-//         })),
-//         (Err(err), _) | (_, Err(err)) => Err(err),
-//     }
-// }
-
 fn parse_abi(abi: Option<String>) -> Result<PathBuf> {
     abi.ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
         "Concern's abi should be specified",
@@ -614,19 +595,6 @@ fn combine_config(
         .or(file_config.polling_interval)
         .unwrap_or(6);
 
-    // info!("determine cli concern");
-    // let cli_main_concern = validate_concern(
-    //     cli_config.main_concern_user,
-    //     cli_config.main_concern_abi,
-    // )?;
-
-    // info!("determine env concern");
-    // let env_main_concern = validate_concern(
-    //     env_config.main_concern_user,
-    //     env_config.main_concern_abi,
-    // )?;
-    //"
-    // determine main concern (cli -> env -> config)
     info!("build main concern");
     let main_concern =
         cli_config.main_concern_abi.or(env_config.main_concern_abi);
@@ -640,10 +608,6 @@ fn combine_config(
             ))));
         }
     };
-    // .or(file_config.main_concern.and_then(|x| Some(x.abi)))
-    // .ok_or(Error::from(ErrorKind::InvalidConfig(String::from(
-    //     "Need to provide main concern (config file, command line or env)",
-    // ))))?;
 
     let full_concerns = file_config.concerns;
 
@@ -790,6 +754,7 @@ fn accept_job(
     web3: &web3::Web3<GenericTransport>,
     worker: &Worker,
 ) -> Result<Address> {
+    info!("Start accept job");
     // Load abi
     let mut file = File::open(worker.abi.clone())?;
     let mut s = String::new();
@@ -909,7 +874,7 @@ fn send_accept_job(
     abi: &ethabi::Contract,
     worker: &Worker,
 ) -> Result<()> {
-    trace!("Accept job...");
+    trace!("Accept job transaction...");
     let gas_price = web3.eth().gas_price().wait()?;
     let gas_price = U256::from(2).checked_mul(gas_price).unwrap();
 
