@@ -173,9 +173,33 @@ impl Dispatcher {
         let assets_run = (&self).assets.clone();
         let port = (&self).config.query_port;
         let polling_interval = (&self).config.polling_interval;
+
+        // spawn a thread to monitor worker state
+        let worker_opt = self.config.worker.clone();
+        if let Some(worker) = worker_opt {
+            let web3 = self._web3.clone();
+            std::thread::spawn(move || {
+                let res = worker.poll_worker_status(&web3);
+
+                match res {
+                    Err(e) => {
+                        error!(
+                            "Error, shutting down dispatcher. Reason: {:?}",
+                            e
+                        );
+                        std::process::exit(1);
+                    }
+                    Ok(()) => {
+                        info!("Worker retired, money sent back successfully");
+                        std::process::exit(0);
+                    }
+                }
+            });
+        }
+
         tokio::run(lazy(move || {
             let (query_tx, query_rx) = mpsc::channel(1_024);
-            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+            // let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
             // spawn the background process that handles all the
             // instances and delegates work to other tokio tasks
@@ -186,9 +210,11 @@ impl Dispatcher {
                     query_rx,
                     polling_interval,
                 )
-                .map_err(|_| {
-                    error!("Shutting down dispatcher");
-                    let _ = shutdown_tx.send(());
+                .map_err(|e| {
+                    // Shutdown process with exit code 1
+                    error!("Error, shutting down dispatcher. Reason: {:?}", e);
+                    std::process::exit(1);
+                    // let _ = shutdown_tx.send(());
                 }),
             );
 
@@ -215,7 +241,7 @@ impl Dispatcher {
                     let tx = query_tx.clone();
                     service_fn(move |req| replier(tx.clone(), req))
                 })
-                .with_graceful_shutdown(shutdown_rx)
+                // .with_graceful_shutdown(shutdown_rx)
                 .map_err(|e| error!("error in socket {}", e))
         }))
     }

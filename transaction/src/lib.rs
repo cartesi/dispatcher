@@ -30,6 +30,7 @@ extern crate configuration;
 extern crate env_logger;
 extern crate envy;
 extern crate error;
+extern crate worker;
 
 extern crate structopt;
 #[macro_use]
@@ -47,7 +48,7 @@ extern crate transport;
 extern crate web3;
 
 use common_types::transaction::{Action, Transaction};
-use configuration::{Concern, ConcernKey, Configuration};
+use configuration::{Concern, Configuration};
 use error::*;
 use ethabi::Token;
 use ethereum_types::U256;
@@ -62,6 +63,7 @@ use web3::futures::future::Either;
 use web3::futures::Future;
 use web3::types;
 use web3::types::Bytes;
+use worker::ConcernKey;
 
 /// In the future there could be several strategies to submit a transaction.
 /// Simplest is based on estimated gas cost.

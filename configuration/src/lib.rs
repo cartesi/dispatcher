@@ -29,6 +29,7 @@ extern crate env_logger;
 extern crate envy;
 extern crate error;
 extern crate transport;
+extern crate worker;
 
 extern crate serde;
 #[macro_use]
@@ -51,7 +52,7 @@ const DEFAULT_MAX_DELAY: u64 = 500;
 const DEFAULT_WARN_DELAY: u64 = 100;
 
 use error::*;
-use ethereum_types::{Address, U256};
+use ethereum_types::Address;
 use parity_crypto::publickey::KeyPair;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -89,45 +90,10 @@ pub struct ConcernAbi {
     pub abi: PathBuf,
 }
 
-/// A worker node, with its ABI and address
-#[derive(Debug, Clone)]
-pub struct Worker {
-    pub abi: PathBuf,
-    pub contract_address: Address,
-    pub key: ConcernKey,
-}
-
 /// A concern together with an ABI
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FullConcern {
-    // user_address: Address,
     abi: PathBuf,
-}
-
-// impl From<FullConcern> for Concern {
-//     fn from(full: FullConcern) -> Self {
-//         Concern {
-//             contract_address: std::default::Default::default(),
-//             user_address: full.user_address,
-//         }
-//     }
-// }
-
-/// Either a key pair, or a single address, to be used either to sign a
-/// transaction, or to send an unsigned transaction to an external signer.
-#[derive(Clone, Debug)]
-pub enum ConcernKey {
-    KeyPair(KeyPair),
-    UserAddress(Address),
-}
-
-impl ConcernKey {
-    pub fn address(&self) -> Address {
-        match self {
-            ConcernKey::KeyPair(key_pair) => key_pair.address(),
-            ConcernKey::UserAddress(address) => address.clone(),
-        }
-    }
 }
 
 // In order to use a concern in a key-value disk database, we need to
@@ -277,8 +243,8 @@ pub struct Configuration {
     pub polling_interval: u64,
     pub web3_timeout: u64,
     pub chain_id: u64,
-    pub signer_key: ConcernKey,
-    pub worker: Option<Worker>,
+    pub signer_key: worker::ConcernKey,
+    pub worker: Option<worker::Worker>,
 }
 
 /// check if a given transport is well formed (having all valid arguments).
@@ -470,7 +436,7 @@ fn combine_config(
             })
             .wait()?;
         if !accounts.is_empty() {
-            ConcernKey::UserAddress(accounts[0])
+            worker::ConcernKey::UserAddress(accounts[0])
         } else {
             return Err(Error::from(ErrorKind::ChainError(format!(
                 "External signer returned zero accounts",
@@ -479,7 +445,7 @@ fn combine_config(
     } else {
         let key =
             recover_key().chain_err(|| "could not find key for concern")?;
-        ConcernKey::KeyPair(key)
+        worker::ConcernKey::KeyPair(key)
     };
 
     // determine testing (cli -> env -> config)
@@ -524,11 +490,7 @@ fn combine_config(
             Some(abi) => {
                 let address =
                     get_contract_address(abi.clone(), network_id.clone())?;
-                Some(Worker {
-                    abi: abi,
-                    contract_address: address,
-                    key: signer_key.clone(),
-                })
+                Some(worker::Worker::new(abi, address, signer_key.clone()))
             }
             None => None,
         }
@@ -543,7 +505,7 @@ fn combine_config(
 
         match (config_address, &worker) {
             (Some(address), _) => parse_user_address(Some(address))?,
-            (None, Some(worker)) => accept_job(&web3, worker)?,
+            (None, Some(worker)) => worker.accept_job(&web3)?,
             (None, None) => {
                 return Err(Error::from(ErrorKind::InvalidConfig(
                     String::from(
@@ -702,7 +664,8 @@ fn combine_config(
 }
 
 fn get_contract_address(abi: PathBuf, network_id: String) -> Result<Address> {
-    let mut file = File::open(&abi)?;
+    let mut file = File::open(&abi)
+        .chain_err(|| format!("could not read file {:?}", abi))?;
     let mut s = String::new();
     file.read_to_string(&mut s)?;
     let v: Value = serde_json::from_str(&s[..])
@@ -747,190 +710,4 @@ fn recover_key() -> Result<KeyPair> {
             .chain_err(|| format!("failed to parse key"))?,
     )?;
     Ok(key_pair)
-}
-
-// Worker accept job if needed
-fn accept_job(
-    web3: &web3::Web3<GenericTransport>,
-    worker: &Worker,
-) -> Result<Address> {
-    info!("Start accept job");
-    // Load abi
-    let mut file = File::open(worker.abi.clone())?;
-    let mut s = String::new();
-    file.read_to_string(&mut s)?;
-    let v: Value = serde_json::from_str(&s[..])
-        .chain_err(|| format!("could not read truffle json file"))?;
-
-    // create a contract object
-    let contract = web3::contract::Contract::from_json(
-        web3.eth().clone(),
-        worker.contract_address,
-        serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
-    )
-    .chain_err(|| format!("could not create contract for worker"))?;
-
-    // Create a low level abi for worker contract
-    let abi = ethabi::Contract::load(
-        serde_json::to_string(&v["abi"]).unwrap().as_bytes(),
-    )
-    .chain_err(|| format!("Could not create low level abi for worker"))?;
-
-    loop {
-        info!("Getting worker state");
-        let worker_state = get_worker_state(&contract, worker)?;
-        info!("Worker state: {:?}", worker_state);
-
-        match worker_state {
-            WorkerState::Available => (),
-            WorkerState::Pending(_) => {
-                // Accept job
-                send_accept_job(web3, &abi, worker)?;
-            }
-            WorkerState::Owned(owner_address) => {
-                return Ok(owner_address);
-            }
-            WorkerState::Retired(_) => {
-                // If worker is retired, stop and return error. This error is unrecoverable.
-                return Err(Error::from(format!("Worker is retired")));
-            }
-        }
-
-        // Wait 15 seconds before trying again.
-        std::thread::sleep(std::time::Duration::from_secs(15));
-    }
-}
-
-#[derive(Debug, Clone)]
-enum WorkerState {
-    Available,
-    Pending(Address),
-    Owned(Address),
-    Retired(Address),
-}
-
-fn get_worker_state(
-    contract: &web3::contract::Contract<GenericTransport>,
-    worker: &Worker,
-) -> Result<WorkerState> {
-    let (query_result, user_address): (_, Address) =
-        web3::futures::future::join_all(vec![
-            build_worker_state_query("isAvailable", contract, worker),
-            build_worker_state_query("isPending", contract, worker),
-            build_worker_state_query("isOwned", contract, worker),
-            build_worker_state_query("isRetired", contract, worker),
-        ])
-        .join(contract.query(
-            "getUser",
-            worker.key.address(),
-            None,
-            web3::contract::Options::default(),
-            None,
-        ))
-        .wait()?;
-
-    let query_result = (
-        query_result[0],
-        query_result[1],
-        query_result[2],
-        query_result[3],
-    );
-
-    match query_result {
-        (true, _, _, _) => Ok(WorkerState::Available),
-        (_, true, _, _) => Ok(WorkerState::Pending(user_address)),
-        (_, _, true, _) => Ok(WorkerState::Owned(user_address)),
-        (_, _, _, true) => Ok(WorkerState::Retired(user_address)),
-        (false, false, false, false) => {
-            Err(Error::from(format!("Invalid blockchain state")))
-        }
-    }
-}
-
-fn build_worker_state_query(
-    func: &str,
-    contract: &web3::contract::Contract<GenericTransport>,
-    worker: &Worker,
-) -> web3::contract::QueryResult<
-    bool,
-    std::boxed::Box<
-        dyn tokio::prelude::Future<
-                Item = serde_json::Value,
-                Error = web3::Error,
-            > + std::marker::Send,
-    >,
-> {
-    contract.query(
-        func,
-        worker.key.address(),
-        None,
-        web3::contract::Options::default(),
-        None,
-    )
-}
-
-fn send_accept_job(
-    web3: &web3::Web3<GenericTransport>,
-    abi: &ethabi::Contract,
-    worker: &Worker,
-) -> Result<()> {
-    trace!("Accept job transaction...");
-    let gas_price = web3.eth().gas_price().wait()?;
-    let gas_price = U256::from(2).checked_mul(gas_price).unwrap();
-
-    abi.function("acceptJob")
-        .and_then(|function| function.encode_input(&vec![]))
-        .map(move |data| {
-            match &worker.key {
-                ConcernKey::UserAddress(address) => {
-                    let tx_request = web3::types::TransactionRequest {
-                        from: *address,
-                        to: Some(worker.contract_address),
-                        gas_price: Some(gas_price),
-                        gas: None,
-                        value: None,
-                        data: Some(web3::types::Bytes(data)),
-                        condition: None,
-                        nonce: None,
-                    };
-
-                    trace!("Sending unsigned transaction");
-                    web3.eth()
-                        .send_transaction(tx_request)
-                        .map(|hash| {
-                            info!("Transaction sent with hash: {:?}", hash);
-                        })
-                        .or_else(|e| {
-                            // ignore the nonce error, by pass the other errors
-                            if let web3::error::Error::Rpc(ref rpc_error) = e {
-                                let nonce_error = String::from(
-                                    "the tx doesn't have the correct nonce",
-                                );
-                                if rpc_error.message[..nonce_error.len()]
-                                    == nonce_error
-                                {
-                                    warn!(
-                                        "Ignoring nonce Error: {}",
-                                        rpc_error.message
-                                    );
-                                    return Box::new(
-                                        web3::futures::future::ok::<(), _>(()),
-                                    );
-                                }
-                            }
-                            return Box::new(web3::futures::future::err(e));
-                        })
-                        .map_err(|e| {
-                            warn!("Failed to send transaction. Error {}", e);
-                            error::Error::from(e)
-                        })
-                        .wait()?;
-
-                    Ok(())
-                }
-                ConcernKey::KeyPair(_) => Err(Error::from(format!(
-                    "Local signing not suported for worker"
-                ))),
-            }
-        })?
 }
