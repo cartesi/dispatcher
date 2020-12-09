@@ -70,13 +70,13 @@ impl Worker {
         &self,
         web3: &web3::Web3<GenericTransport>,
     ) -> Result<Address> {
-        info!("Start accept job");
+        trace!("Start accept job");
         let (contract, abi) = self.build_contract_abi(web3)?;
 
         loop {
-            info!("Getting worker state");
+            trace!("Getting worker state");
             let worker_state = self.get_worker_state(&contract)?;
-            info!("Worker state: {:?}", worker_state);
+            trace!("Worker state: {:?}", worker_state);
 
             match worker_state {
                 WorkerState::Available => (),
@@ -108,9 +108,9 @@ impl Worker {
         let (contract, _) = self.build_contract_abi(web3)?;
 
         loop {
-            info!("Getting worker state");
+            trace!("Getting worker state");
             let worker_state = self.get_worker_state(&contract)?;
-            info!("Worker state: {:?}", worker_state);
+            trace!("Worker state: {:?}", worker_state);
 
             match worker_state {
                 WorkerState::Retired(owner_address) => {
@@ -311,7 +311,7 @@ impl Worker {
                         to: *owner_address,
                         gas_price: Some(gas_price),
                         gas: None,
-                        value: Some(balance),
+                        value: None,
                         data: None,
                     };
 
@@ -321,7 +321,7 @@ impl Worker {
                     if balance > gas_estimate * gas_price {
                         (balance - gas_estimate * gas_price, gas_estimate)
                     } else {
-                        info!("Worker has insuficient funds to transfer back to owner");
+                        trace!("Worker has insuficient funds to transfer back to owner");
                         return Ok(());
                     }
                 };
