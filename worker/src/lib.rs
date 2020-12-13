@@ -51,6 +51,7 @@ enum WorkerState {
     Pending(Address),
     Owned(Address),
     Retired(Address),
+    Unknown,
 }
 
 impl Worker {
@@ -79,7 +80,7 @@ impl Worker {
             trace!("Worker state: {:?}", worker_state);
 
             match worker_state {
-                WorkerState::Available => (),
+                WorkerState::Available | WorkerState::Unknown => (),
                 WorkerState::Pending(_) => {
                     // Accept job
                     self.send_accept_job(web3, &abi)?;
@@ -184,13 +185,15 @@ impl Worker {
         );
 
         match query_result {
-            (true, _, _, _) => Ok(WorkerState::Available),
-            (_, true, _, _) => Ok(WorkerState::Pending(user_address)),
-            (_, _, true, _) => Ok(WorkerState::Owned(user_address)),
-            (_, _, _, true) => Ok(WorkerState::Retired(user_address)),
-            (false, false, false, false) => {
-                Err(Error::from(format!("Invalid blockchain state")))
+            (true, false, false, false) => Ok(WorkerState::Available),
+            (false, true, false, false) => {
+                Ok(WorkerState::Pending(user_address))
             }
+            (false, false, true, false) => Ok(WorkerState::Owned(user_address)),
+            (false, false, false, true) => {
+                Ok(WorkerState::Retired(user_address))
+            }
+            _ => Ok(WorkerState::Unknown),
         }
     }
 
