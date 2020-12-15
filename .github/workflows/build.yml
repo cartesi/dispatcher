@@ -24,5 +24,8 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Check code format
+        run: cargo fmt --all -- --check
+        
       - name: Build
         run: cargo build -j $(nproc)
