@@ -38,8 +38,8 @@ extern crate ethabi;
 extern crate ethereum_types;
 extern crate leveldb;
 extern crate serde_json;
-extern crate web3;
 extern crate transport;
+extern crate web3;
 
 use configuration::{Concern, Configuration};
 use error::*;
@@ -53,6 +53,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
+use transport::GenericTransport;
 use web3::contract::Options;
 use web3::futures;
 use web3::futures::future::err;
@@ -62,10 +63,8 @@ use web3::futures::stream;
 use web3::futures::Future;
 use web3::futures::Stream;
 use web3::types::{Bytes, CallRequest};
-use transport::GenericTransport;
 
 use web3::contract::tokens::Tokenize;
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServiceStatus {
@@ -303,7 +302,7 @@ impl StateManager {
     pub fn get_indices(
         &self,
         concern: Concern,
-        active: bool
+        active: bool,
     ) -> Box<dyn Future<Item = Vec<usize>, Error = Error> + Send> {
         // query tentative instances
         let expanded_cache = self
@@ -337,11 +336,8 @@ impl StateManager {
 
             trace!("Writing relevant instances to state database");
             let write_opts = WriteOptions::new();
-            let value =
-                serde_json::to_string(&concern_cache).unwrap().clone();
-            database
-                .put(write_opts, concern, value.as_bytes())
-                .unwrap();
+            let value = serde_json::to_string(&concern_cache).unwrap().clone();
+            database.put(write_opts, concern, value.as_bytes()).unwrap();
 
             let vector_of_indices = match active {
                 true => {
@@ -358,24 +354,23 @@ impl StateManager {
                             )
                             .map(move |active: bool| (i, active))
                             .map_err(|e| {
-                                Error::from(e)
-                                    .chain_err(|| "error while querying isActive")
+                                Error::from(e).chain_err(|| {
+                                    "error while querying isActive"
+                                })
                             })
                     });
-                    
+
                     // create a stream from the above list of futures as they resolve
-                    Either::A(stream::futures_unordered(active_futures)
-                        .filter_map(move |(index, is_active)| {
-                            Some(index).filter(|_| is_active)
-                        })
-                        .collect()
-                        .map(move |active_indices| {
-                            active_indices
-                        }))
-                },
-                false => {
-                    Either::B(ok(cache_list))
+                    Either::A(
+                        stream::futures_unordered(active_futures)
+                            .filter_map(move |(index, is_active)| {
+                                Some(index).filter(|_| is_active)
+                            })
+                            .collect()
+                            .map(move |active_indices| active_indices),
+                    )
                 }
+                false => Either::B(ok(cache_list)),
             };
             vector_of_indices
         }));
@@ -495,10 +490,11 @@ impl StateManager {
                 user_address: concern.user_address,
             };
 
-            match self.get_instance(c, instance.1.as_usize())
-                .wait() {
+            match self.get_instance(c, instance.1.as_usize()).wait() {
                 Ok(s) => sub_instances.push(Box::new(s)),
-                Err(e) => return Box::new(futures::future::err(Error::from(e)))
+                Err(e) => {
+                    return Box::new(futures::future::err(Error::from(e)))
+                }
             }
         }
 
@@ -507,7 +503,7 @@ impl StateManager {
             service_method: "".into(),
             status: 0,
             description: "".into(),
-            progress: 0
+            progress: 0,
         };
         // join the subinstances together to return the current instance
         let starting_instance = Instance {

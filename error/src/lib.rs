@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 //#![feature(try_trait)]
 #![recursion_limit = "128"]
 
@@ -31,9 +29,9 @@
 extern crate error_chain;
 extern crate envy;
 extern crate ethabi;
-extern crate parity_crypto;
 extern crate grpc;
 extern crate hyper;
+extern crate parity_crypto;
 extern crate rustc_hex;
 extern crate serde_yaml;
 extern crate time;

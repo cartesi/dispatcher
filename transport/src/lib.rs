@@ -1,5 +1,5 @@
 // Dispatcher provides the infrastructure to support the development of DApps,
-// mediating the communication between on-chain and off-chain components. 
+// mediating the communication between on-chain and off-chain components.
 
 // Copyright (C) 2019 Cartesi Pte. Ltd.
 
@@ -22,8 +22,6 @@
 // be used independently under the Apache v2 license. After this component is
 // rewritten, the entire component will be released under the Apache v2 license.
 
-
-
 //! Configuration for a cartesi node, including config file, command
 //! line arguments and environmental variables.
 
@@ -33,18 +31,18 @@ extern crate error;
 extern crate error_chain;
 #[macro_use]
 extern crate log;
+extern crate jsonrpc_core;
+extern crate serde_json;
+extern crate tokio_timer;
 extern crate url;
 extern crate web3;
-extern crate serde_json;
-extern crate jsonrpc_core;
-extern crate tokio_timer;
 
 use error::*;
 use jsonrpc_core::Value;
-use web3::futures::future;
-use web3::futures::Future;
 use std::time::Duration;
 use tokio_timer::Timer;
+use web3::futures::future;
+use web3::futures::Future;
 
 /// Generic transport
 #[derive(Debug, Clone)]
@@ -55,7 +53,10 @@ pub struct GenericTransport {
 }
 
 impl GenericTransport {
-    pub fn new(connstr: &str, timeout: u64) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
+    pub fn new(
+        connstr: &str,
+        timeout: u64,
+    ) -> Result<(web3::transports::EventLoopHandle, GenericTransport)> {
         let mut generic_transport = GenericTransport {
             http: None,
             ws: None,
@@ -89,58 +90,75 @@ impl GenericTransport {
 }
 
 impl web3::Transport for GenericTransport {
-    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send + 'static>;
-    fn send(&self, id: web3::RequestId, request: jsonrpc_core::Call) -> Self::Out {
+    type Out = Box<
+        dyn Future<Item = Value, Error = web3::error::Error> + Send + 'static,
+    >;
+    fn send(
+        &self,
+        id: web3::RequestId,
+        request: jsonrpc_core::Call,
+    ) -> Self::Out {
         if let Some(s) = &self.http {
             return Box::new(s.send(id, request));
         }
         if let Some(s) = &self.ws {
-
             let duration = Duration::from_secs(self.timeout);
             let timer = Timer::default();
             let timeout = timer.sleep(duration);
 
-            let timeout_send = s.send(id, request).select2(timeout)
-                .then(|res| -> Self::Out {
-                    match res {
-                        Ok(future::Either::A((v, _))) => Box::new(
-                                future::ok::<Value, web3::error::Error>(v)
+            let timeout_send =
+                s.send(id, request)
+                    .select2(timeout)
+                    .then(|res| -> Self::Out {
+                        match res {
+                            Ok(future::Either::A((v, _))) => Box::new(
+                                future::ok::<Value, web3::error::Error>(v),
                             ),
-                        Ok(future::Either::B((_, _))) => Box::new(
-                                future::err(
-                                    web3::error::Error::Transport("timeout sending request.".to_string())
-                                )
+                            Ok(future::Either::B((_, _))) => Box::new(
+                                future::err(web3::error::Error::Transport(
+                                    "timeout sending request.".to_string(),
+                                )),
                             ),
-                        Err(future::Either::A((e, _))) => Box::new(future::err(e)),
-                        Err(future::Either::B((e, _))) => {
-                            error!("{}", e);
-                            Box::new(
-                                future::err(
-                                    web3::error::Error::Transport("timer error sending request.".to_string())
-                                )
-                            )
+                            Err(future::Either::A((e, _))) => {
+                                Box::new(future::err(e))
+                            }
+                            Err(future::Either::B((e, _))) => {
+                                error!("{}", e);
+                                Box::new(future::err(
+                                    web3::error::Error::Transport(
+                                        "timer error sending request."
+                                            .to_string(),
+                                    ),
+                                ))
+                            }
                         }
-                    }
-                });
+                    });
             return Box::new(timeout_send);
         }
 
-        return Box::new(
-            web3::futures::future::err(
-                web3::error::Error::Transport("Invalid transport type.".to_string())
-            )
-        );
+        return Box::new(web3::futures::future::err(
+            web3::error::Error::Transport(
+                "Invalid transport type.".to_string(),
+            ),
+        ));
     }
-    fn prepare(&self, method: &str, params: Vec<Value>) -> (web3::RequestId, jsonrpc_core::Call) {
+    fn prepare(
+        &self,
+        method: &str,
+        params: Vec<Value>,
+    ) -> (web3::RequestId, jsonrpc_core::Call) {
         if let Some(s) = &self.http {
             return s.prepare(method, params);
         }
         if let Some(s) = &self.ws {
             return s.prepare(method, params);
         }
-        
-        return (std::default::Default::default(),
-            jsonrpc_core::Call::Invalid{
-                id: jsonrpc_core::Id::Null});
+
+        return (
+            std::default::Default::default(),
+            jsonrpc_core::Call::Invalid {
+                id: jsonrpc_core::Id::Null,
+            },
+        );
     }
 }
