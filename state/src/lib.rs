@@ -290,6 +290,14 @@ impl StateManager {
                                 .chain_err(|| "error while filtering instances")
                         }),
                 )
+            } else if max_index < cached_max_index {
+                error!(
+                    "Reset ConcernCache due to inconsistent blockchain state"
+                );
+                Either::B(ok(Arc::new(ConcernCache {
+                    last_maximum_index: 0,
+                    list_instances: vec![],
+                })))
             } else {
                 Either::B(ok(Arc::new(ConcernCache {
                     last_maximum_index: max_index,
