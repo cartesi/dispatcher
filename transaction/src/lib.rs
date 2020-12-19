@@ -197,7 +197,7 @@ impl TransactionManager {
                 .eth()
                 .transaction_count(
                     address.clone(),
-                    Some(web3::types::BlockNumber::Pending),
+                    None,
                 )
                 .map_err(|_e| {
                     error::Error::from(format!("could not retrieve nonce"))
