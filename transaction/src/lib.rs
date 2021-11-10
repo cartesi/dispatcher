@@ -277,7 +277,7 @@ impl TransactionManager {
                                     .checked_mul(gas_price)
                                     .unwrap(),
                                 // do something better then double
-                                gas: U256::from(2).checked_mul(total_gas).unwrap(),
+                                gas: U256::from(12).checked_mul(total_gas).unwrap(),
                                 value: request.value,
                                 data: raw_data,
                             }
